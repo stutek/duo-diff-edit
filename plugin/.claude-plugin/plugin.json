@@ -1,0 +1,10 @@
+{
+  "name": "duo-diff-edit",
+  "version": "0.1.0",
+  "description": "Write together with an agent through the git index: a skill for proposing edits into the index, and a band of 📖 buttons above the prompt that open the index ↔ buffer diff of files from the last answer (needs the Duo Diff Edit extension for Visual Studio Code).",
+  "author": { "name": "Simon Tutek" },
+  "homepage": "https://github.com/stutek/duo-diff-edit",
+  "repository": "https://github.com/stutek/duo-diff-edit",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

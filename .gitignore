@@ -1,0 +1,3 @@
+dist/
+.private/
+node_modules/

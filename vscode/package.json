@@ -1,0 +1,49 @@
+{
+  "name": "duo-diff-edit",
+  "publisher": "stutek",
+  "displayName": "Duo Diff Edit",
+  "description": "Write together with an AI agent: a diff of the git index (agent's proposals) against your editor buffer, accepted block by block with the built-in gutter arrows.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stutek/duo-diff-edit"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "duoDiffEdit.open",
+        "title": "Open diff (stage ↔ buffer)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "duoDiffEdit.open",
+          "when": "resourceScheme == file && !explorerResourceIsFolder",
+          "group": "3_compare"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "duoDiffEdit.open",
+          "when": "false"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "duo-diff-edit",
+  "description": "Duo Diff Edit: write together with an agent through the git index.",
+  "owner": { "name": "Simon Tutek" },
+  "plugins": [
+    {
+      "name": "duo-diff-edit",
+      "source": "./plugin",
+      "description": "Agent proposes edits into the git index; you accept them block by block in the index ↔ buffer diff."
+    }
+  ]
+}
