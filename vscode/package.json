@@ -2,7 +2,7 @@
   "name": "duo-diff-edit",
   "publisher": "stutek",
   "displayName": "Duo Diff Edit",
-  "description": "Write together with an AI agent: a diff of the git index (agent's proposals) against your editor buffer, accepted block by block with the built-in gutter arrows.",
+  "description": "Write together with an AI agent, as in Meld: the agent's proposal on the left, your file on the right, blocks copied across either way.",
   "version": "0.1.0",
   "license": "MIT",
   "repository": {
@@ -33,24 +33,95 @@
   "contributes": {
     "commands": [
       {
+        "command": "duoDiffEdit.openPair",
+        "title": "Open diff (proposal ↔ file)"
+      },
+      {
         "command": "duoDiffEdit.open",
         "title": "Open diff (stage ↔ buffer)"
+      },
+      {
+        "command": "duoDiffEdit.copyLeft",
+        "title": "Copy Block Left",
+        "category": "Duo Diff Edit",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "command": "duoDiffEdit.copyRight",
+        "title": "Copy Block Right",
+        "category": "Duo Diff Edit",
+        "icon": "$(arrow-right)"
       }
     ],
     "menus": {
       "explorer/context": [
+        {
+          "command": "duoDiffEdit.openPair",
+          "when": "resourceScheme == file && !explorerResourceIsFolder",
+          "group": "3_compare"
+        },
         {
           "command": "duoDiffEdit.open",
           "when": "resourceScheme == file && !explorerResourceIsFolder",
           "group": "3_compare"
         }
       ],
+      "editor/title": [
+        {
+          "command": "duoDiffEdit.copyLeft",
+          "when": "duoDiffEdit.twoFiles",
+          "group": "navigation@-2"
+        },
+        {
+          "command": "duoDiffEdit.copyRight",
+          "when": "duoDiffEdit.twoFiles",
+          "group": "navigation@-1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "duoDiffEdit.copyLeft",
+          "when": "duoDiffEdit.twoFiles && isInDiffEditor",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "duoDiffEdit.copyRight",
+          "when": "duoDiffEdit.twoFiles && isInDiffEditor",
+          "group": "1_modification@2"
+        }
+      ],
       "commandPalette": [
         {
           "command": "duoDiffEdit.open",
           "when": "false"
+        },
+        {
+          "command": "duoDiffEdit.openPair",
+          "when": "false"
+        },
+        {
+          "command": "duoDiffEdit.copyLeft",
+          "when": "duoDiffEdit.twoFiles"
+        },
+        {
+          "command": "duoDiffEdit.copyRight",
+          "when": "duoDiffEdit.twoFiles"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "duoDiffEdit.copyLeft",
+        "key": "alt+left",
+        "mac": "ctrl+alt+left",
+        "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
+      },
+      {
+        "command": "duoDiffEdit.copyRight",
+        "key": "alt+right",
+        "mac": "ctrl+alt+right",
+        "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
+      }
+    ]
   }
 }

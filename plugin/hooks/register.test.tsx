@@ -78,7 +78,7 @@ test('band: files of the last answer with files; kept on an answer without files
   let { band, labels } = await buttons($)
   expect(labels).toEqual(['📖 SKILL.md', '📖 README.md', '📖 todo.md (notes)'])   // outside the root: no repository, its folder
   await band.press({ key: 'diff:/home/me/project/README.md' })
-  expect(w.written).toEqual([{ path: '/run/user/1000/duo-diff-edit/42', text: 'git /home/me/project/README.md\n' }])
+  expect(w.written).toEqual([{ path: '/run/user/1000/duo-diff-edit/42', text: 'pair /home/me/project/README.md\n' }])
   await band.unmount()
 
   messages = [...messages, M('user', 'thanks'), M('assistant', 'You are welcome.')]   // an answer without files
@@ -112,7 +112,7 @@ test('band: without XDG_RUNTIME_DIR the mailbox is in the home directory, never 
   const { band, labels } = await buttons($)
   expect(labels).toEqual(['📖 a.md'])
   await band.press({ key: 'diff:/home/me/project/a.md' })
-  expect(w.written).toEqual([{ path: '/Users/me/.cache/duo-diff-edit/42', text: 'git /home/me/project/a.md\n' }])
+  expect(w.written).toEqual([{ path: '/Users/me/.cache/duo-diff-edit/42', text: 'pair /home/me/project/a.md\n' }])
   await band.unmount()
 })
 
@@ -173,7 +173,7 @@ test('band: with the skill option a click also starts that skill for the file', 
   await complete($)
   const { band } = await buttons($)
   await band.press({ key: 'diff:/home/me/project/a.md' })
-  expect(w.written).toEqual([{ path: '/run/user/1000/duo-diff-edit/42', text: 'git /home/me/project/a.md\n' }])
+  expect(w.written).toEqual([{ path: '/run/user/1000/duo-diff-edit/42', text: 'pair /home/me/project/a.md\n' }])
   expect(w.prompts).toEqual(['/turbo-pregled /home/me/project/a.md'])
 
   await band.press({ key: 'diff:/home/me/project/b c.md' })   // a decoded link may carry words: no prompt for it

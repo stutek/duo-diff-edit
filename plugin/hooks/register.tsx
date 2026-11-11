@@ -1,8 +1,8 @@
 // A band of "📖" buttons above the prompt box in Visual Studio Code: one per local file the last answer mentions
 // (a markdown link or a path in inline code that exists). An answer is all assistant text since the user's last
 // message, read at turn.complete (its `answer` carries only the last block). The band stays until an answer brings
-// new files and is rebuilt at session start (window reload). A click writes the request "git <absolute path>" to the
-// mailbox of the Duo Diff Edit extension for Visual Studio Code: $XDG_RUNTIME_DIR/duo-diff-edit/, else
+// new files and is rebuilt at session start (window reload). A click writes the request "pair <absolute path>" (the
+// agent's proposal ↔ the file) to the mailbox of the Duo Diff Edit extension for Visual Studio Code: $XDG_RUNTIME_DIR/duo-diff-edit/, else
 // <home>/.cache/duo-diff-edit/ (vscode/mailbox.js); a request still there after TAKEN_WITHIN means no window took it.
 // A band, not a decoration of the answer: Visual Studio Code renders the answer without mod changes
 // (anthropics/claude-code#107335).
@@ -102,7 +102,7 @@ export const register: Register = (on, options) => {
     const open = async (abs: string) => {
       try {
         const dir = await mailbox($), name = String(await $.clock.now())
-        await $.fs.write(`${dir}/${name}`, `git ${abs}\n`)
+        await $.fs.write(`${dir}/${name}`, `pair ${abs}\n`)
         // a window of an old version, or one not reloaded, stays silent; so does a project window in Restricted Mode
         $.clock.after(TAKEN_WITHIN, async () => {
           if (await $.fs.exists(`${dir}/${name}`)) {

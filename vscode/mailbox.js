@@ -4,10 +4,11 @@
 // <home>/.cache/duo-diff-edit. Never a shared temp directory: another user could plant requests or symbolic links
 // there. On Linux and macOS the extension refuses a mailbox that is a symbolic link or belongs to another user.
 //
-// A request file holds lines "git <absolute path>" (index ↔ buffer) or "saved <absolute path>" (disk ↔ buffer), each
-// ending in a newline; a file whose last line has no newline is still being written. The window whose workspace
-// holds the path takes the request. A request no workspace claims (an orphan) is, after ORPHAN_AFTER, taken by the
-// focused window: a "saved" request it opens itself (no git runs); for a "git" request it renames the file to
+// A request file holds lines "pair <absolute path>" (the agent's proposal ↔ the file), "git <absolute path>"
+// (index ↔ buffer) or "saved <absolute path>" (disk ↔ buffer), each ending in a newline; a file whose last line has
+// no newline is still being written. The window whose workspace holds the path takes the request. A request no
+// workspace claims (an orphan) is, after ORPHAN_AFTER, taken by the focused window: a "pair" or "saved" request it
+// opens itself (no git runs); for a "git" request it renames the file to
 // "open-<name>" and opens the repository's folder in a window of its own, where Visual Studio Code's Workspace Trust
 // decides, as for any folder, whether git may run. Only the project's window takes an "open-" request. A "git"
 // request outside any repository, or in a repository that is the home folder, is refused. Any window deletes a
@@ -23,8 +24,20 @@ const STALE_AFTER = 60000;       // ms
 const FORWARDED = 'open-';       // name prefix of a request forwarded to a new window of its project
 const WIN = process.platform === 'win32';
 
-const location = (env = process.env, home = os.homedir()) =>
-  path.join(env.XDG_RUNTIME_DIR || path.join(home, '.cache'), 'duo-diff-edit');
+const base = (env, home) => env.XDG_RUNTIME_DIR || path.join(home, '.cache');
+const location = (env = process.env, home = os.homedir()) => path.join(base(env, home), 'duo-diff-edit');
+
+// The agent's proposals for a file live under one private directory, at the file's absolute path (on Windows its
+// drive letter, lower case, is the first folder): agent and extension find the proposal of a file without asking
+// each other. As a shell line: P="${XDG_RUNTIME_DIR:-$HOME/.cache}/duo-diff-edit-proposals$F" (Git Bash: F=/c/…).
+const proposals = (env = process.env, home = os.homedir()) => path.join(base(env, home), 'duo-diff-edit-proposals');
+function proposalOf(file, dir, win = WIN) {   // '' for a path that would leave dir (.. segments)
+  const p = (win ? path.win32 : path.posix), abs = p.resolve(file);
+  const m = win && /^([a-zA-Z]):[\\/]*(.*)$/.exec(abs);
+  const rel = m ? `${m[1].toLowerCase()}${p.sep}${m[2]}` : abs.replace(/^[\\/]+/, '');
+  const out = p.resolve(dir, rel);
+  return out.startsWith(p.resolve(dir) + p.sep) ? out : '';
+}
 
 // Creates the mailbox and returns '' when it is safe to use, else the reason it is not.
 function prepare(dir, uid = WIN ? -1 : process.getuid()) {
@@ -53,7 +66,7 @@ const toPath = (p, win = WIN) => {   // Git Bash writes /c/Users/…; on Windows
 };
 // [kind, absolute path] or null; control characters never reach a path
 const parse = (line) => {
-  const m = /^(git|saved) ([^\u0000-\u001f\u007f]+)$/.exec(line.trim());
+  const m = /^(pair|git|saved) ([^\u0000-\u001f\u007f]+)$/.exec(line.trim());
   return m && path.isAbsolute(m[2]) ? [m[1], toPath(m[2])] : null;
 };
 const fold = (p) => (process.platform === 'linux' ? p : p.toLowerCase());   // Windows and macOS: case-insensitive
@@ -96,11 +109,11 @@ function decide({ name, lines, age, complete = true, roots, focused, home = os.h
   if (age < ORPHAN_AFTER) return { action: 'wait' };
   if (!focused) return { action: '' };
   const [kind, file] = reqs[0][1];
-  if (kind === 'saved') return { action: 'own', ...split(([, r]) => r[0] === 'saved') };   // opening a file runs no git
+  if (kind !== 'git') return { action: 'own', ...split(([, r]) => r[0] !== 'git') };   // opening files runs no git
   const root = findRoot(real(file));
   if (!root) return { action: 'refuse', reason: `${file} is not in a git repository` };
   if (fold(real(root)) === fold(real(home))) return { action: 'refuse', reason: `${file} is in the repository of the home folder; open its project folder yourself` };
   return { action: 'forward', folder: root };
 }
 
-module.exports = { MAX_REQUEST, ORPHAN_AFTER, STALE_AFTER, FORWARDED, location, prepare, readRequest, parse, toPath, real, rootsOf, inside, findRoot, decide };
+module.exports = { MAX_REQUEST, ORPHAN_AFTER, STALE_AFTER, FORWARDED, location, proposals, proposalOf, prepare, readRequest, parse, toPath, real, rootsOf, inside, findRoot, decide };

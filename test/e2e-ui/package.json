@@ -1,0 +1,10 @@
+{
+  "name": "duo-diff-edit-e2e-ui",
+  "publisher": "e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hosts the end-to-end test of the two-file diff (run.js) inside a real Visual Studio Code: scripts/e2e-vscode.py starts it with --extensionTestsPath, next to the extension installed from the .vsix.",
+  "engines": {
+    "vscode": "^1.80.0"
+  }
+}

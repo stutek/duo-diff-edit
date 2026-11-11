@@ -60,10 +60,23 @@ test('readRequest: a small regular file only', () => {
 test('parse: absolute paths only, no control characters', () => {
   assert.deepEqual(box.parse(`git ${at('a.md')}\r`), ['git', at('a.md')]);
   assert.deepEqual(box.parse(`saved ${at('b c.md')}`), ['saved', at('b c.md')]);
+  assert.deepEqual(box.parse(`pair ${at('b c.md')}`), ['pair', at('b c.md')]);
   assert.equal(box.parse('git a.md'), null);
   assert.equal(box.parse('rm -rf /'), null);
   assert.equal(box.parse(`git ${at('a\u0007.md')}`), null);
   assert.equal(box.parse(''), null);
+});
+
+test('proposals: beside the mailbox; a proposal sits at its file\'s absolute path, never outside the directory', () => {
+  assert.equal(box.proposals({ XDG_RUNTIME_DIR: '/run/user/1000' }, '/home/me'), path.join('/run/user/1000', 'duo-diff-edit-proposals'));
+  assert.equal(box.proposals({}, '/home/me'), path.join('/home/me', '.cache', 'duo-diff-edit-proposals'));
+  const dir = '/run/user/1000/duo-diff-edit-proposals';
+  assert.equal(box.proposalOf('/home/me/CV a.md', dir, false), `${dir}/home/me/CV a.md`);   // the shell line: "$P$F"
+  assert.equal(box.proposalOf('/home/me/../../etc/x', dir, false), `${dir}/etc/x`);
+  assert.equal(box.proposalOf('/', dir, false), '');
+  const wdir = 'C:\\Users\\me\\.cache\\duo-diff-edit-proposals';
+  assert.equal(box.proposalOf('C:\\Users\\me\\a.md', wdir, true), `${wdir}\\c\\Users\\me\\a.md`);   // Git Bash: "$P/c/Users/me/a.md"
+  assert.equal(box.proposalOf('c:/Users/me/a.md', wdir, true), `${wdir}\\c\\Users\\me\\a.md`);
 });
 
 test('toPath: Git Bash drive paths on Windows', { skip: !WIN && 'Windows paths' }, () => {
@@ -116,6 +129,8 @@ test('decide: an orphan is forwarded to its repository, opened here when no git 
   assert.deepEqual(box.decide({ ...base, roots: [], lines: [`git ${file}`] }), { action: 'forward', folder: path.join(d, 'repo') });   // a window without a folder
   assert.deepEqual(box.decide({ ...base, lines: [`saved ${path.join(d, 'plain', 'c.md')}`, `git ${file}`] }),
     { action: 'own', reqs: [['saved', path.join(d, 'plain', 'c.md')]], rest: [`git ${file}`] });
+  assert.deepEqual(box.decide({ ...base, lines: [`pair ${file}`, `saved ${file}`] }),   // a pair opens files only, no git
+    { action: 'own', reqs: [['pair', file], ['saved', file]], rest: [] });
   if (box.findRoot(path.join(d, 'plain', 'c.md')) === '') {   // unless the temp directory sits inside a repository
     assert.equal(box.decide({ ...base, lines: [`git ${path.join(d, 'plain', 'c.md')}`] }).action, 'refuse');
   }

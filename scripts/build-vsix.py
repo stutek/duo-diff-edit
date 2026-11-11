@@ -14,7 +14,7 @@ import pathlib
 import zipfile
 from xml.sax.saxutils import escape, quoteattr
 
-FILES = ['extension.js', 'mailbox.js', 'package.json']
+FILES = ['blocks.js', 'extension.js', 'mailbox.js', 'package.json']
 DATE = (1980, 1, 1, 0, 0, 0)   # the earliest a zip can store
 
 root = pathlib.Path(__file__).resolve().parent.parent

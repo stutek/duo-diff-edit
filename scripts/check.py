@@ -44,7 +44,7 @@ step('unit tests', [node, '--test', *sorted((root / 'test').glob('*.test.js'))])
 step('build', [sys.executable, root / 'scripts' / 'build-vsix.py'])
 vsix = root / 'dist' / f"{ext['name']}-{ext['version']}.vsix"
 names = sorted(zipfile.ZipFile(vsix).namelist())
-expected = sorted(['extension.vsixmanifest', '[Content_Types].xml', 'extension/LICENSE.md',
+expected = sorted(['extension.vsixmanifest', '[Content_Types].xml', 'extension/LICENSE.md', 'extension/blocks.js',
                    'extension/extension.js', 'extension/mailbox.js', 'extension/package.json'])
 print(f'== package: {names}')
 if names != expected:

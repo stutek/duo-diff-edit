@@ -1,8 +1,11 @@
-// Duo Diff Edit: a diff of the git index (left) against the editor buffer (right) in an auxiliary window.
-// The left side (git: URI, ref ~) follows the index: stage and commit refresh it (git fileSystemProvider);
-// the right side is the editor's text model, so the user's unsaved text is never touched. The agent proposes
-// edits by writing them into the index; the user accepts a block with the gutter's "Revert Block" (→) and
-// stages their own text with "Stage Block" (+).
+// Duo Diff Edit: the agent's proposal (left) against the user's file (right) in an auxiliary window, as in Meld.
+// Both sides are editable. The left side is served by a file system provider of its own (Proposals), which polls
+// the proposal on disk, so the side reloads the moment the agent writes it, without an inotify watch. A block moves
+// across with the built-in gutter arrow (→, Revert Block) or with Copy Block Left / Copy Block Right (editor title,
+// context menu, Alt+← / Alt+→ as in Meld; blocks.js finds the block at the cursor).
+//
+// The older mode, a diff of the git index (left, git: URI, ref ~) against the editor buffer, stays for "git"
+// requests and the Explorer menu: the agent proposes into the index, the user stages with "Stage Block" (+).
 //
 // Requests arrive in a mailbox directory (mailbox.js: where it is, who takes which request, what is refused).
 //
@@ -13,8 +16,10 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const box = require('./mailbox');
+const { blocks, touched, replacement } = require('./blocks');
 
-const run = (cmd, args) => new Promise((r) => execFile(cmd, args, (err, out) => r(err ? '' : out.trim())));
+// a helper that hangs (qdbus6 without a session bus waits for one) must not stall opening the diff
+const run = (cmd, args) => new Promise((r) => execFile(cmd, args, { timeout: 3000 }, (err, out) => r(err ? '' : out.trim())));
 const SEPARATORS = new RegExp(`[${String.fromCharCode(0x2028, 0x2029)}]`, 'g');   // older JS engines end a string at them
 const literal = (v) => JSON.stringify(v).replace(SEPARATORS, (c) => `\\u${c.charCodeAt(0).toString(16)}`);
 let log;                 // Output → Duo Diff Edit
@@ -33,6 +38,7 @@ workspace.windowAdded.connect((w) => {   // new auxiliary window: largest screen
   raise(w);
 });`;
 async function kwin(dir, title = '') {   // KWin script for 4 s: place a new window, raise the window with the title; no-op without KDE
+  if (process.platform !== 'linux' || !process.env.DBUS_SESSION_BUS_ADDRESS) return;   // KWin is reached over the session bus
   const j = await run('kscreen-doctor', ['-j']);
   if (!j) return;
   let outputs;
@@ -60,15 +66,119 @@ const gitApi = async () => {
 };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const SUFFIX = ' (stage ↔ buffer)';   // diff title; group() finds the auxiliary window by it
+const SUFFIX = ' (stage ↔ buffer)';   // diff titles; group() finds the auxiliary window by them
+const PAIR = ' (proposal ↔ yours)';
 let storage;              // extension global storage: the KWin script
 let auxGroup;             // tab group in the auxiliary window
 let roots = [];           // this window's workspace folders (mailbox.rootsOf)
 const group = () => {
   const all = vscode.window.tabGroups.all;
   if (auxGroup && all.includes(auxGroup)) return auxGroup;
-  return (auxGroup = all.find((g) => g.tabs.some((t) => t.label.endsWith(SUFFIX))));   // also after a window reload
+  return (auxGroup = all.find((g) => g.tabs.some((t) => t.label.endsWith(SUFFIX) || t.label.endsWith(PAIR))));   // also after a reload
 };
+
+// The left side of a pair: the proposal on disk (mailbox.proposalOf), under a scheme of its own whose URI path is
+// the user's file. Only files under the proposals directory are served. fs.watchFile polls (no inotify instance,
+// which a full fs.inotify.max_user_instances would deny); on a change Visual Studio Code reloads the side unless it
+// has unsaved edits, and saving with a newer file on disk shows its usual conflict choice.
+const SCHEME = 'duo-diff-edit-proposal';
+class Proposals {
+  constructor(dir) {
+    this.dir = dir;
+    this.emitter = new vscode.EventEmitter();
+    this.onDidChangeFile = this.emitter.event;
+    this.polled = new Map();
+  }
+  disk(uri) {
+    const f = box.proposalOf(uri.fsPath, this.dir);
+    if (!f) throw vscode.FileSystemError.NoPermissions(uri);
+    return f;
+  }
+  poll(uri) {
+    const key = uri.toString();
+    if (this.polled.has(key)) return;
+    const f = this.disk(uri);
+    const on = (cur, prev) => {
+      if (cur.mtimeMs !== prev.mtimeMs || cur.size !== prev.size) this.emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+    };
+    fs.watchFile(f, { interval: 500 }, on);
+    this.polled.set(key, () => fs.unwatchFile(f, on));
+  }
+  io(uri, fn) {
+    try { return fn(this.disk(uri)); } catch (e) {
+      if (e && e.code === 'ENOENT') throw vscode.FileSystemError.FileNotFound(uri);
+      throw e;
+    }
+  }
+  watch(uri) { this.poll(uri); return new vscode.Disposable(() => {}); }   // polling stops with the extension
+  stat(uri) {
+    return this.io(uri, (f) => {
+      const s = fs.statSync(f);
+      return { type: vscode.FileType.File, ctime: s.ctimeMs, mtime: s.mtimeMs, size: s.size };
+    });
+  }
+  readFile(uri) { this.poll(uri); return this.io(uri, (f) => fs.readFileSync(f)); }
+  writeFile(uri, content) { this.io(uri, (f) => fs.writeFileSync(f, content, { mode: 0o600 })); }
+  readDirectory() { return []; }
+  createDirectory(uri) { throw vscode.FileSystemError.NoPermissions(uri); }
+  delete(uri) { throw vscode.FileSystemError.NoPermissions(uri); }
+  rename(uri) { throw vscode.FileSystemError.NoPermissions(uri); }
+  dispose() { for (const stop of this.polled.values()) stop(); this.polled.clear(); }
+}
+let proposals;            // Proposals, or undefined when its directory is not safe to use
+let proposalsRefused = '';
+
+async function openPair(file) {   // a proposal that does not exist yet starts as a copy of the file: no difference
+  if (!proposals) throw new Error(`the proposals directory is not safe to use: ${proposalsRefused}`);
+  const disk = box.proposalOf(file, proposals.dir);
+  if (!disk) throw new Error(`${file}: no place for its proposal`);
+  if (!fs.existsSync(disk)) {
+    fs.mkdirSync(path.dirname(disk), { recursive: true, mode: 0o700 });
+    fs.copyFileSync(file, disk, fs.constants.COPYFILE_EXCL);
+    fs.chmodSync(disk, 0o600);
+    log.info(`${file}: no proposal yet, it starts as a copy of the file`);
+  }
+  const left = vscode.Uri.file(file).with({ scheme: SCHEME });
+  return showInAux([[left, vscode.Uri.file(file), `${path.basename(file)}${PAIR}`]]);
+}
+
+// Copy Block Left / Right: the blocks the cursor or selection touches (the rule of Revert Block, blocks.touched),
+// from the other side, in the active diff of two editable documents.
+const editable = (u) => u.scheme === 'file' || u.scheme === SCHEME;
+const twoFiles = (i) => i instanceof vscode.TabInputTextDiff && editable(i.original) && editable(i.modified);
+const eolOf = (d) => (d.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n');
+// The diff of two files whose side the editor shows: active tabs of every group first, because the diff's
+// auxiliary window need not hold the active tab group.
+function diffOf(ed) {
+  if (!ed) return undefined;
+  const key = ed.document.uri.toString(), groups = vscode.window.tabGroups.all;
+  const t = [...groups.map((g) => g.activeTab), ...groups.flatMap((g) => g.tabs)]
+    .find((x) => x && twoFiles(x.input) && (x.input.original.toString() === key || x.input.modified.toString() === key));
+  return t && t.input;
+}
+async function copyBlock(targetSide) {
+  const ed = vscode.window.activeTextEditor, input = diffOf(ed);
+  const key = ed && ed.document.uri.toString();
+  const side = !input ? '' : key === input.original.toString() ? 'a' : 'b';
+  if (!side) {
+    log.info(`copy: no diff of two files at the cursor (editor ${key || 'none'})`);
+    return void vscode.window.showInformationMessage('Duo Diff Edit: put the cursor into a diff of two files.');
+  }
+  const [a, b] = await Promise.all([vscode.workspace.openTextDocument(input.original), vscode.workspace.openTextDocument(input.modified)]);
+  const A = a.getText().split(eolOf(a)), B = b.getText().split(eolOf(b));
+  const list = blocks(A, B, vscode.workspace.getConfiguration('diffEditor').get('ignoreTrimWhitespace', true));
+  if (!list) return void vscode.window.showWarningMessage('Duo Diff Edit: the files differ in too many lines to find the block.');
+  const hits = list.filter((k) => ed.selections.some((s) => touched([k], side, s.start.line, s.end.line).length));
+  if (!hits.length) return void vscode.window.setStatusBarMessage('Duo Diff Edit: no changed block at the cursor', 3000);
+  const [target, T, S] = targetSide === 'a' ? [a, A, B] : [b, B, A];
+  const edit = new vscode.WorkspaceEdit();
+  for (const k of hits) {
+    const r = replacement(T, S, k, targetSide, eolOf(target));
+    edit.replace(target.uri, new vscode.Range(r.from[0], r.from[1], r.to[0], r.to[1]), r.text);
+  }
+  if (!(await vscode.workspace.applyEdit(edit))) return void vscode.window.showWarningMessage('Duo Diff Edit: that side cannot be edited.');
+  log.info(`copied ${hits.length} block(s) to the ${targetSide === 'a' ? 'left' : 'right'}: ${target.uri.fsPath}`);
+}
 
 async function newWindow() {   // empty auxiliary window; its group is the last one (main window first, then auxiliary)
   const n = vscode.window.tabGroups.all.length;
@@ -107,12 +217,16 @@ async function addToIndex(bin, root, f) {   // an untracked file enters the inde
 async function handle([kind, file]) {   // a parsed request: a file in this window's workspace, or an orphan "saved"
   const uri = vscode.Uri.file(file);
   log.info(`open ${kind} ${file}`);
+  if (kind === 'pair') return openPair(file);
   if (kind === 'saved') {
     await vscode.window.showTextDocument(uri, { preview: false });
     return vscode.commands.executeCommand('workbench.files.action.compareWithSaved', uri);
   }
   const api = await gitApi();
-  const root = await api.getRepositoryRoot(uri);
+  // the file's folder: for a repository git has not opened yet, it runs git rev-parse with this as the working
+  // directory, and a file there fails with ENOTDIR. A Uri comes back (Visual Studio Code 1.144), a string in older ones.
+  const found = await api.getRepositoryRoot(vscode.Uri.file(path.dirname(file)));
+  const root = found && (typeof found === 'string' ? found : found.fsPath);
   let repo = root && api.getRepository(vscode.Uri.file(root));
   for (let i = 0; !repo && root && box.inside(path.join(root, '.git'), roots) && i < 20; i++) {   // a window just opened: git is still scanning
     await wait(250);
@@ -145,10 +259,29 @@ exports.activate = (ctx) => {
   ctx.subscriptions.push(vscode.commands.registerCommand('duoDiffEdit.open', (uri) => {   // Explorer: a file of this workspace
     if (uri instanceof vscode.Uri && uri.scheme === 'file' && box.inside(uri.fsPath, roots)) return handle(['git', uri.fsPath]).catch(fail);
   }));
+  ctx.subscriptions.push(vscode.commands.registerCommand('duoDiffEdit.openPair', (uri) => {   // Explorer: the proposal ↔ the file
+    if (uri instanceof vscode.Uri && uri.scheme === 'file') return handle(['pair', uri.fsPath]).catch(fail);
+  }));
+  ctx.subscriptions.push(vscode.commands.registerCommand('duoDiffEdit.copyLeft', () => copyBlock('a').catch(fail)));
+  ctx.subscriptions.push(vscode.commands.registerCommand('duoDiffEdit.copyRight', () => copyBlock('b').catch(fail)));
+  const setKey = () => {   // shows the copy buttons and keys only in a diff of two editable files
+    const t = vscode.window.tabGroups.activeTabGroup.activeTab;
+    vscode.commands.executeCommand('setContext', 'duoDiffEdit.twoFiles', (!!t && twoFiles(t.input)) || !!diffOf(vscode.window.activeTextEditor));
+  };
+  setKey();
+  ctx.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(setKey), vscode.window.tabGroups.onDidChangeTabGroups(setKey),
+    vscode.window.onDidChangeActiveTextEditor(setKey));
+
+  const dir = box.proposals();
+  try { proposalsRefused = box.prepare(dir); } catch (e) { proposalsRefused = String(e); }
+  if (!proposalsRefused) {
+    proposals = new Proposals(dir);
+    ctx.subscriptions.push(proposals, vscode.workspace.registerFileSystemProvider(SCHEME, proposals, { isCaseSensitive: process.platform === 'linux' }));
+  }
   const mailbox = box.location();
   let refused;
   try { refused = box.prepare(mailbox); } catch (e) { refused = String(e); }
-  log.info(`version ${ctx.extension.packageJSON.version}, mailbox ${mailbox}${refused ? ` refused: ${refused}` : ''}`);
+  log.info(`version ${ctx.extension.packageJSON.version}, trusted ${vscode.workspace.isTrusted}, mailbox ${mailbox}${refused ? ` refused: ${refused}` : ''}, proposals ${dir}${proposalsRefused ? ` refused: ${proposalsRefused}` : ''}`);
   if (refused) return void fail(`the request mailbox is not safe to use: ${refused}`);
   const ours = (name) => path.join(mailbox, `.${process.pid}-${name}`);
   const tidy = (names) => {   // a claimed file a crashed window left behind
