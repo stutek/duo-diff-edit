@@ -5,7 +5,7 @@ description: Edit a file together with the user in Visual Studio Code, as in Mel
 
 # Duo Diff Edit
 
-The user and you edit the same file. The diff shows **your proposal on the left** and **the user's file on the right**, both editable. You never write the user's file: you write only the proposal, and the left side updates at once. The user takes a block of yours with the gutter arrow → or **Copy Block Right** (Alt+→), and puts their own text into your proposal with **Copy Block Left** (Alt+←); on macOS Ctrl+Alt+← and →. Many users also write on the left, as a working surface, and take the whole side over to the right.
+The user and you edit the same file. The diff shows **your proposal on the left** and **the user's file on the right**, both editable. You never write the user's file: you write only the proposal, and the left side updates at once. The user takes a block of yours with the gutter arrow → or **Copy Block Right** (Alt+→), and puts their own text into your proposal with **Copy Block Left** (Alt+←); Alt+↑ and Alt+↓ go from block to block, and with Shift the same keys work word by word, so the user can take one changed word of a long line and leave the rest (keys: the README's table). Many users also write on the left, as a working surface, and take the whole side over to the right.
 
 Requires the Duo Diff Edit extension for Visual Studio Code (https://github.com/stutek/duo-diff-edit); no git. Run the shell commands below in bash (on Windows: Git Bash, which Claude Code uses).
 

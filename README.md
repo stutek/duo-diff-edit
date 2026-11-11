@@ -11,13 +11,14 @@ Write a file together with an AI agent without the agent ever touching your file
 
 The diff shows **the agent's proposal on the left** and **your file on the right**, as in [Meld](https://meldmerge.org/), and both sides are editable. The agent writes only its proposal, a private copy; the left side updates the moment it does, without a reload prompt. You move blocks across either way:
 
-| To                                             | Mouse                                   | Keys (macOS)       |
-|------------------------------------------------|-----------------------------------------|--------------------|
-| take a proposal (left → right)                 | gutter arrow →, or **→** in the title   | Alt+→ (Ctrl+Alt+→) |
-| put your text into the proposal (right → left) | **←** in the title, or the context menu | Alt+← (Ctrl+Alt+←) |
-| go to the next or previous change              | ↑ ↓ in the title                        | as in any diff     |
+| To                                             | Mouse                                   | Keys (macOS)                           |
+|------------------------------------------------|-----------------------------------------|----------------------------------------|
+| take a proposal (left → right)                 | gutter arrow →, or **→** in the title   | Alt+→ (Ctrl+Alt+→)                     |
+| put your text into the proposal (right → left) | **←** in the title, or the context menu | Alt+← (Ctrl+Alt+←)                     |
+| go to the next or previous block               | ↑ ↓ in the title                        | Alt+↓ Alt+↑ (Ctrl+Alt+↓ ↑)             |
+| the same, word by word, inside a line too      | Command Palette: *Duo Diff Edit*        | Shift+Alt+arrow (Ctrl+Shift+Alt+arrow) |
 
-A block is every changed block the cursor or selection touches, by the same rule as the built-in arrow. Nothing reaches your file behind your back: every change on the right is yours to save and commit. The ← and → buttons and keys work in any diff of two files, `code --diff a b` too.
+The keys are Meld's. A block is every changed block the cursor or selection touches, by the same rule as the built-in arrow; word by word, it is every changed word or phrase the cursor or selection touches, and going to one selects it, so the next copy takes just that. Going moves on the side the cursor is on. Nothing reaches your file behind your back: every change on the right is yours to save and commit. The buttons and keys work in any diff of two files, `code --diff a b` too; in that diff they take the place of Visual Studio Code's Move Line (Alt+↑ ↓), Expand and Shrink Selection (Shift+Alt+← →) and Add Cursor Above and Below (Shift+Alt+↑ ↓ on Linux). Ctrl+arrows stay for moving by word and scrolling.
 
 It has two parts:
 
@@ -73,7 +74,8 @@ What the mailbox trusts and refuses: [SECURITY.md](SECURITY.md).
 ## Limitations
 
 - The **📖** band appears in Claude Code inside Visual Studio Code. Decorating the file links inside the answer itself is not possible yet: [anthropics/claude-code#107335](https://github.com/anthropics/claude-code/issues/107335).
-- In the index mode the left side refreshes when the Visual Studio Code window has focus; the proposal of the two-file mode refreshes within half a second.
+- In the index mode the left side refreshes when the Visual Studio Code window has focus; the proposal of the two-file mode refreshes within half a second, from a poll of its own.
+- Your file on the right is Visual Studio Code's own document, reloaded from disk by its file watcher. On Linux that watcher needs an inotify instance; with none left it logs `EMFILE` (in **Output → File Watcher**) and the file reloads only when the window gets focus. The extension then warns once. Raise the limit: `sudo sysctl -w fs.inotify.max_user_instances=1024`, and to keep it, `echo fs.inotify.max_user_instances=1024 | sudo tee /etc/sysctl.d/60-inotify.conf`.
 - Visual Studio Code does not give extensions its diff, so ← and → find the block with a line diff of their own (honouring `diffEditor.ignoreTrimWhitespace`). For an ordinary text it marks the same blocks; where a long run of changed lines could be split two ways, the block may differ from the one drawn. The gutter arrow → is Visual Studio Code's own.
 - A gutter button for ← next to the built-in → would need a proposed API that a released extension cannot use.
 - A **📖** button shows the file name, and for a file of another project that project's folder name (`📖 notes.md (Other)`); the full path on hover is not possible yet, as Claude Code's band in Visual Studio Code has no tooltip.

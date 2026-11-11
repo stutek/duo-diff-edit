@@ -2,7 +2,8 @@
 // Both sides are editable. The left side is served by a file system provider of its own (Proposals), which polls
 // the proposal on disk, so the side reloads the moment the agent writes it, without an inotify watch. A block moves
 // across with the built-in gutter arrow (→, Revert Block) or with Copy Block Left / Copy Block Right (editor title,
-// context menu, Alt+← / Alt+→ as in Meld; blocks.js finds the block at the cursor).
+// context menu, Alt+← / Alt+→ as in Meld; blocks.js finds the block at the cursor); Alt+↑ / Alt+↓ go to the previous
+// or next block. With Shift the same keys work word by word, inside a line too.
 //
 // The older mode, a diff of the git index (left, git: URI, ref ~) against the editor buffer, stays for "git"
 // requests and the Explorer menu: the agent proposes into the index, the user stages with "Stage Block" (+).
@@ -16,7 +17,7 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const box = require('./mailbox');
-const { blocks, touched, replacement } = require('./blocks');
+const { blocks, touched, replacement, words, touchedWords, wordReplacement } = require('./blocks');
 
 // a helper that hangs (qdbus6 without a session bus waits for one) must not stall opening the diff
 const run = (cmd, args) => new Promise((r) => execFile(cmd, args, { timeout: 3000 }, (err, out) => r(err ? '' : out.trim())));
@@ -142,6 +143,38 @@ async function openPair(file) {   // a proposal that does not exist yet starts a
   return showInAux([[left, vscode.Uri.file(file), `${path.basename(file)}${PAIR}`]]);
 }
 
+// The right side is Visual Studio Code's own file:// document, which its file watcher reloads when another program
+// writes the file. That watcher needs an inotify instance on Linux; with none left (fs.inotify.max_user_instances)
+// it fails, and the side keeps the old text until the window gets focus. This polls the file and says so, once.
+// Every diff of two files that shows is watched (watchRights runs on each change of tabs), until it no longer shows.
+const rights = new Map();   // file → stop polling
+const watchRights = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs)
+  .filter((t) => twoFiles(t.input) && t.input.modified.scheme === 'file').forEach((t) => watchRight(t.input.modified.fsPath));
+let warnedWatcher = false;
+function watchRight(file) {
+  if (rights.has(file)) return;
+  const uri = vscode.Uri.file(file).toString();
+  const shown = () => vscode.window.tabGroups.all.some((g) => g.tabs.some((t) => twoFiles(t.input) && t.input.modified.toString() === uri));
+  let timer;
+  const on = (cur, prev) => {
+    if (!shown()) { fs.unwatchFile(file, on); rights.delete(file); return; }
+    if (cur.mtimeMs === prev.mtimeMs && cur.size === prev.size) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {   // time for the watcher to have reloaded it
+      const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri);
+      let disk;
+      try { disk = fs.readFileSync(file, 'utf8'); } catch { return; }
+      if (!doc || doc.isDirty || doc.getText() === disk.replace(/^﻿/, '')) return;
+      log.warn(`${file}: changed on disk, but Visual Studio Code did not load it (its file watcher may have no inotify instance left)`);
+      if (warnedWatcher) return;
+      warnedWatcher = true;
+      vscode.window.showWarningMessage(`Duo Diff Edit: ${path.basename(file)} changed on disk, and Visual Studio Code has not loaded it: its file watcher is not working. Click into the window to load it.${process.platform === 'linux' ? ' The usual cause is no inotify instance left; raise the limit: sudo sysctl -w fs.inotify.max_user_instances=1024' : ''}`);
+    }, 3000);
+  };
+  fs.watchFile(file, { interval: 1000 }, on);
+  rights.set(file, () => { clearTimeout(timer); fs.unwatchFile(file, on); });
+}
+
 // Copy Block Left / Right: the blocks the cursor or selection touches (the rule of Revert Block, blocks.touched),
 // from the other side, in the active diff of two editable documents.
 const editable = (u) => u.scheme === 'file' || u.scheme === SCHEME;
@@ -156,28 +189,59 @@ function diffOf(ed) {
     .find((x) => x && twoFiles(x.input) && (x.input.original.toString() === key || x.input.modified.toString() === key));
   return t && t.input;
 }
-async function copyBlock(targetSide) {
+// The diff at the cursor: its editor, the side the cursor is on ('a' left, 'b' right), both documents, their lines
+// and the changed blocks (or, with byWord, the changes word by word); undefined, with a message, when there is none.
+async function atCursor(what, byWord) {
   const ed = vscode.window.activeTextEditor, input = diffOf(ed);
   const key = ed && ed.document.uri.toString();
   const side = !input ? '' : key === input.original.toString() ? 'a' : 'b';
   if (!side) {
-    log.info(`copy: no diff of two files at the cursor (editor ${key || 'none'})`);
+    log.info(`${what}: no diff of two files at the cursor (editor ${key || 'none'})`);
     return void vscode.window.showInformationMessage('Duo Diff Edit: put the cursor into a diff of two files.');
   }
   const [a, b] = await Promise.all([vscode.workspace.openTextDocument(input.original), vscode.workspace.openTextDocument(input.modified)]);
   const A = a.getText().split(eolOf(a)), B = b.getText().split(eolOf(b));
-  const list = blocks(A, B, vscode.workspace.getConfiguration('diffEditor').get('ignoreTrimWhitespace', true));
+  const trim = vscode.workspace.getConfiguration('diffEditor').get('ignoreTrimWhitespace', true);
+  const list = blocks(A, B, trim);
   if (!list) return void vscode.window.showWarningMessage('Duo Diff Edit: the files differ in too many lines to find the block.');
-  const hits = list.filter((k) => ed.selections.some((s) => touched([k], side, s.start.line, s.end.line).length));
-  if (!hits.length) return void vscode.window.setStatusBarMessage('Duo Diff Edit: no changed block at the cursor', 3000);
+  return { ed, side, a, b, A, B, list: byWord ? words(A, B, list, trim) : list };
+}
+const pos = (p) => new vscode.Position(p[0], p[1]);
+
+// Copy Block / Copy Words Left and Right: the blocks or changes the cursor or selection touches (the rule of
+// Revert Block, blocks.touched; for words blocks.touchedWords), from the other side.
+async function copy(targetSide, byWord) {
+  const c = await atCursor('copy', byWord);
+  if (!c) return;
+  const { ed, side, a, b, A, B, list } = c;
+  const hits = list.filter((k) => ed.selections.some((s) => (byWord
+    ? touchedWords([k], side, [s.start.line, s.start.character], [s.end.line, s.end.character])
+    : touched([k], side, s.start.line, s.end.line)).length));
+  if (!hits.length) return void vscode.window.setStatusBarMessage(`Duo Diff Edit: no ${byWord ? 'changed word' : 'changed block'} at the cursor`, 3000);
   const [target, T, S] = targetSide === 'a' ? [a, A, B] : [b, B, A];
   const edit = new vscode.WorkspaceEdit();
   for (const k of hits) {
-    const r = replacement(T, S, k, targetSide, eolOf(target));
-    edit.replace(target.uri, new vscode.Range(r.from[0], r.from[1], r.to[0], r.to[1]), r.text);
+    const r = (byWord ? wordReplacement : replacement)(T, S, k, targetSide, eolOf(target));
+    edit.replace(target.uri, new vscode.Range(pos(r.from), pos(r.to)), r.text);
   }
   if (!(await vscode.workspace.applyEdit(edit))) return void vscode.window.showWarningMessage('Duo Diff Edit: that side cannot be edited.');
-  log.info(`copied ${hits.length} block(s) to the ${targetSide === 'a' ? 'left' : 'right'}: ${target.uri.fsPath}`);
+  log.info(`copied ${hits.length} ${byWord ? 'change(s)' : 'block(s)'} to the ${targetSide === 'a' ? 'left' : 'right'}: ${target.uri.fsPath}`);
+}
+
+// Next / Previous Block and Change (as Meld's Alt+↓ / Alt+↑): on the side the cursor is on, so the copy keys that
+// follow act there. A block's start is its first line; a change word by word is selected, so the copy picks it.
+// Past the last one it goes round to the first, as the diff's own Next Change does.
+async function go(dir, byWord) {
+  const c = await atCursor('go', byWord);
+  if (!c || !c.list.length) return c && vscode.window.setStatusBarMessage('Duo Diff Edit: no difference', 3000);
+  const { ed, side, list } = c;
+  const ranges = list.map((k) => (byWord ? k[side] : [[k[side][0], 0], [k[side][0], 0]]))
+    .map(([p, q]) => new vscode.Range(ed.document.validatePosition(pos(p)), ed.document.validatePosition(pos(q))));
+  const at = ed.selection.active;
+  const r = dir > 0 ? ranges.find((x) => (byWord ? x.start.isAfter(at) : x.start.line > at.line)) || ranges[0]
+    : [...ranges].reverse().find((x) => (byWord ? x.start.isBefore(ed.selection.start) : x.start.line < at.line)) || ranges[ranges.length - 1];
+  ed.selection = new vscode.Selection(r.start, r.end);
+  ed.revealRange(r, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
 }
 
 async function newWindow() {   // empty auxiliary window; its group is the last one (main window first, then auxiliary)
@@ -262,11 +326,16 @@ exports.activate = (ctx) => {
   ctx.subscriptions.push(vscode.commands.registerCommand('duoDiffEdit.openPair', (uri) => {   // Explorer: the proposal ↔ the file
     if (uri instanceof vscode.Uri && uri.scheme === 'file') return handle(['pair', uri.fsPath]).catch(fail);
   }));
-  ctx.subscriptions.push(vscode.commands.registerCommand('duoDiffEdit.copyLeft', () => copyBlock('a').catch(fail)));
-  ctx.subscriptions.push(vscode.commands.registerCommand('duoDiffEdit.copyRight', () => copyBlock('b').catch(fail)));
+  for (const [id, fn] of [['copyLeft', () => copy('a', false)], ['copyRight', () => copy('b', false)],
+    ['copyWordsLeft', () => copy('a', true)], ['copyWordsRight', () => copy('b', true)],
+    ['nextBlock', () => go(1, false)], ['previousBlock', () => go(-1, false)],
+    ['nextWords', () => go(1, true)], ['previousWords', () => go(-1, true)]]) {
+    ctx.subscriptions.push(vscode.commands.registerCommand(`duoDiffEdit.${id}`, () => fn().catch(fail)));
+  }
   const setKey = () => {   // shows the copy buttons and keys only in a diff of two editable files
     const t = vscode.window.tabGroups.activeTabGroup.activeTab;
     vscode.commands.executeCommand('setContext', 'duoDiffEdit.twoFiles', (!!t && twoFiles(t.input)) || !!diffOf(vscode.window.activeTextEditor));
+    watchRights();
   };
   setKey();
   ctx.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(setKey), vscode.window.tabGroups.onDidChangeTabGroups(setKey),
@@ -335,6 +404,6 @@ exports.activate = (ctx) => {
     if (young) setTimeout(read, box.ORPHAN_AFTER);
   };
   fs.watchFile(mailbox, { interval: 500 }, read);
-  ctx.subscriptions.push({ dispose: () => fs.unwatchFile(mailbox) });
+  ctx.subscriptions.push({ dispose: () => fs.unwatchFile(mailbox) }, { dispose: () => { for (const stop of rights.values()) stop(); rights.clear(); } });
   read();
 };

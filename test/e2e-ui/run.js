@@ -100,12 +100,62 @@ exports.run = async () => {
     fs.writeFileSync(proposal, 'the agent overwrote it\n');
     await wait(2000);
     check(left.isDirty && left.getText().startsWith('unsaved '), 'left: unsaved edits are not replaced by an agent write');
-    await vscode.commands.executeCommand('workbench.action.files.revert');   // leave no dirty editor behind
+    // leave no dirty editor behind: Revert File in the diff reverts only its right side, so the left on its own
+    await vscode.window.showTextDocument(left.uri, { preview: true });
+    await vscode.commands.executeCommand('workbench.action.files.revert');
+    check(await until(() => !left.isDirty, 3000), 'left: Revert File discards the unsaved edits');
 
     // the provider serves the proposals directory only
     let refused = false;
     try { await vscode.workspace.fs.readFile(vscode.Uri.from({ scheme: 'duo-diff-edit-proposal', path: '/' })); } catch { refused = true; }
     check(refused, 'provider: no file outside the proposals directory');
+
+    // both sides load what another program writes to disk, without focus; the right side by Visual Studio Code's watcher
+    const proposed2 = 'alpha beta gamma delta\nsame\nold one\n', mine2 = 'alpha BETA gamma DELTA\nsame\nnew one\n';
+    fs.writeFileSync(proposal, proposed2);
+    fs.writeFileSync(file, mine2);
+    check(await until(() => left.getText() === proposed2, 5000), 'left: loads the proposal from disk');
+    // Visual Studio Code's watcher does that; with no inotify instance left it cannot, and the extension warns
+    // (scripts/e2e-vscode.py checks the warning against the watcher's log)
+    if (await until(() => right.getText() === mine2, 10000)) say('ok    right: loads the file from disk when another program writes it');
+    else {
+      say('note  right: not loaded from disk');
+      await wait(5000);   // the extension's 1 s poll and 3 s grace
+      await vscode.window.showTextDocument(right.uri, { preview: true });
+      await vscode.commands.executeCommand('workbench.action.files.revert');   // load it, as focus would
+    }
+    check(await until(() => right.getText() === mine2, 3000), 'right: holds the file as on disk');
+
+    // word by word (Shift+Alt+↓ / ↑, ← / →): two changed words in one line move one at a time
+    const sel = (ed) => [ed.selection.start.line, ed.selection.start.character, ed.selection.end.line, ed.selection.end.character].join(',');
+    let ed = await cursorOn('right', 0);
+    await vscode.commands.executeCommand('duoDiffEdit.nextWords');
+    check(sel(ed) === '0,6,0,10', `Next Changed Words: selects the first changed word on the right (${sel(ed)})`);
+    await vscode.commands.executeCommand('duoDiffEdit.copyWordsLeft');
+    check(await until(() => left.lineAt(0).text === 'alpha BETA gamma delta', 3000), 'Copy Changed Words Left: only that word goes to the left');
+    await vscode.commands.executeCommand('duoDiffEdit.nextWords');
+    check(sel(ed) === '0,17,0,22', `Next Changed Words: then the next one in the same line (${sel(ed)})`);
+    ed = await cursorOn('left', 0);
+    await vscode.commands.executeCommand('duoDiffEdit.nextWords');
+    check(sel(ed) === '0,17,0,22', `Next Changed Words: on the left side too (${sel(ed)})`);
+    await vscode.commands.executeCommand('duoDiffEdit.copyWordsRight');
+    check(await until(() => right.lineAt(0).text === 'alpha BETA gamma delta', 3000), 'Copy Changed Words Right: only that word goes to the right');
+
+    // block by block (Alt+↓ / ↑), round past the last
+    await vscode.commands.executeCommand('duoDiffEdit.nextBlock');
+    check(ed.selection.active.line === 2, `Next Changed Block: goes to the next block (line ${ed.selection.active.line})`);
+    await vscode.commands.executeCommand('duoDiffEdit.previousBlock');
+    check(ed.selection.active.line === 2, 'Previous Changed Block: goes round to the last when none is before');
+    await vscode.commands.executeCommand('duoDiffEdit.copyRight');
+    check(await until(() => right.getText() === left.getText(), 3000), 'Copy Block Right after Next Changed Block: the sides are equal');
+    await Promise.all([left.save(), right.save()]);
+
+    // the keys, as Meld's (Visual Studio Code on a display without a window manager has no key focus to press them)
+    const keys = Object.fromEntries(vscode.extensions.getExtension('stutek.duo-diff-edit').packageJSON.contributes.keybindings
+      .map((k) => [k.key, k.command.replace('duoDiffEdit.', '')]));
+    const want = { 'alt+left': 'copyLeft', 'alt+right': 'copyRight', 'alt+up': 'previousBlock', 'alt+down': 'nextBlock',
+      'shift+alt+left': 'copyWordsLeft', 'shift+alt+right': 'copyWordsRight', 'shift+alt+up': 'previousWords', 'shift+alt+down': 'nextWords' };
+    check(JSON.stringify(keys) === JSON.stringify(want), `keys: ${JSON.stringify(keys)}`);
   } catch (e) {
     check(false, `no exception: ${e && e.stack || e}`);
   }

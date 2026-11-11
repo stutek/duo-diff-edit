@@ -207,6 +207,13 @@ try:
         for line in result.read_text(encoding='utf-8').splitlines() if result.exists() else []:
             if line.startswith(('ok', 'FAIL')):
                 check(line.startswith('ok'), line[6:])
+        if 'note  right: not loaded from disk' in (result.read_text(encoding='utf-8') if result.exists() else ''):
+            watcher = '\n'.join(p.read_text(errors='replace') for p in (u / 'logs').glob('*/window*/fileWatcher.log'))
+            print('note  Visual Studio Code\'s file watcher has no inotify instance (EMFILE); raise the limit: '
+                  'sudo sysctl -w fs.inotify.max_user_instances=1024' if 'EMFILE' in watcher else
+                  'note  Visual Studio Code did not reload the right side, and its file watcher logged no EMFILE')
+            check('EMFILE' in watcher, 'right: not loaded from disk only because the file watcher could not start')
+            check('did not load it' in logs(u), 'right: the extension warns that Visual Studio Code did not load the file')
         check(done, 'two-file diff: the test inside Visual Studio Code finished')
         check('[error]' not in logs(u), 'two-file diff: no error in the extension log')
         for p in procs:

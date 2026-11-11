@@ -55,12 +55,88 @@ function replacement(target, source, k, targetSide, eol = '\n') {
   return { from: [t0, 0], to: end, text: lines.join(eol) };
 }
 
-// A text after applying the edits (as the editor would), for tests and for checking the result.
+// Changes inside the blocks, word by word, so one changed word in a long line moves on its own: [{ k, a: [from,
+// to], b: [from, to] }] with positions [line, character]. A block one side of which has no lines is one change
+// (whole: true), copied by replacement(). Tokens are words, runs of spaces, line breaks and single other characters;
+// changes with only spaces between them are one change, so a changed phrase moves at once.
+const TOKEN = /[\p{L}\p{N}_]+|[^\S\n]+|\n|[^\p{L}\p{N}_\s]/gu;
+const space = (t) => /^[^\S\n]+$/.test(t);
+function tokenDiff(x, y) {   // [[x0, x1, y0, y1]] token index runs that differ; null when too large
+  let pre = 0;
+  while (pre < x.length && pre < y.length && x[pre] === y[pre]) pre++;
+  let suf = 0;
+  while (suf < x.length - pre && suf < y.length - pre && x[x.length - 1 - suf] === y[y.length - 1 - suf]) suf++;
+  const n = x.length - pre - suf, m = y.length - pre - suf;
+  if (n * m > MAX_CELLS) return null;
+  const L = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) L[i][j] = x[pre + i] === y[pre + j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  }
+  const runs = [];
+  let i = 0, j = 0, si = -1, sj = -1;
+  const close = () => { if (si >= 0) runs.push([pre + si, pre + i, pre + sj, pre + j]); si = -1; };
+  while (i < n || j < m) {
+    if (i < n && j < m && x[pre + i] === y[pre + j]) { close(); i++; j++; continue; }
+    if (si < 0) { si = i; sj = j; }
+    if (i < n && (j === m || L[i + 1][j] >= L[i][j + 1])) i++; else j++;
+  }
+  close();
+  const merged = [];   // runs with only spaces between them (on both sides the same tokens) become one
+  for (const r of runs) {
+    const p = merged[merged.length - 1];
+    if (p && x.slice(p[1], r[0]).every(space)) { p[1] = r[1]; p[3] = r[3]; } else merged.push([...r]);
+  }
+  return merged;
+}
+function words(a, b, list, ignoreTrimWhitespace = true) {
+  const out = [];
+  for (const k of list) {
+    const [a0, a1] = k.a, [b0, b1] = k.b;
+    const whole = () => out.push({ k, whole: true, a: span(a, a0, a1), b: span(b, b0, b1) });
+    if (a0 === a1 || b0 === b1) { whole(); continue; }
+    const x = a.slice(a0, a1).join('\n').match(TOKEN) || [], y = b.slice(b0, b1).join('\n').match(TOKEN) || [];
+    const runs = tokenDiff(x, y);
+    if (!runs) { whole(); continue; }
+    const at = (tokens, line0) => {   // token index → [line, character]
+      const pos = [[line0, 0]];
+      for (const t of tokens) { const [l, c] = pos[pos.length - 1]; pos.push(t === '\n' ? [l + 1, 0] : [l, c + t.length]); }
+      return pos;
+    };
+    const pa = at(x, a0), pb = at(y, b0);
+    for (const [x0, x1, y0, y1] of runs) {
+      if (ignoreTrimWhitespace && x.slice(x0, x1).every(space) && y.slice(y0, y1).every(space)) continue;
+      out.push({ k, a: [pa[x0], pa[x1]], b: [pb[y0], pb[y1]] });
+    }
+  }
+  return out;
+}
+// the range of lines [l0, l1) on a side; where it has none, the point at which they would be
+function span(lines, l0, l1) {
+  if (l0 < l1) return [[l0, 0], [l1 - 1, lines[l1 - 1].length]];
+  const p = l0 < lines.length ? [l0, 0] : [lines.length - 1, lines[lines.length - 1].length];
+  return [p, p];
+}
+const before = (p, q) => p[0] < q[0] || (p[0] === q[0] && p[1] <= q[1]);   // p ≤ q
+// the changes the selection [start, end] on one side touches (a cursor at either end of a change touches it)
+const touchedWords = (list, side, start, end) => list.filter((w) => (w.whole
+  ? touched([w.k], side, start[0], end[0]).length
+  : before(w[side][0], end) && before(start, w[side][1])));
+// The edit that makes change w of the target side equal to the source side, as replacement() gives it.
+function wordReplacement(target, source, w, targetSide, eol = '\n') {
+  if (w.whole) return replacement(target, source, w.k, targetSide, eol);
+  const [[l0, c0], [l1, c1]] = w[targetSide === 'a' ? 'b' : 'a'];
+  const text = l0 === l1 ? source[l0].slice(c0, c1)
+    : [source[l0].slice(c0), ...source.slice(l0 + 1, l1), source[l1].slice(0, c1)].join(eol);
+  return { from: w[targetSide][0], to: w[targetSide][1], text };
+}
+
+// A text after applying the edits (as the editor would), for tests and for checking the result. Texts inserted at
+// the same place keep the order of the edits, as in a WorkspaceEdit: the later one is applied first.
 function apply(text, edits, eol = '\n') {
   const lines = text.split(eol);
   const offset = ([line, ch]) => lines.slice(0, line).reduce((n, l) => n + l.length + eol.length, 0) + ch;
-  return [...edits].sort((x, y) => offset(y.from) - offset(x.from))
+  return edits.map((e, i) => [e, i]).sort(([x, i], [y, j]) => offset(y.from) - offset(x.from) || j - i).map(([e]) => e)
     .reduce((t, e) => t.slice(0, offset(e.from)) + e.text + t.slice(offset(e.to)), text);
 }
 
-module.exports = { MAX_CELLS, blocks, touched, replacement, apply };
+module.exports = { MAX_CELLS, blocks, touched, replacement, words, touchedWords, wordReplacement, apply };

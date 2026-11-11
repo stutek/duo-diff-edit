@@ -51,6 +51,36 @@
         "title": "Copy Block Right",
         "category": "Duo Diff Edit",
         "icon": "$(arrow-right)"
+      },
+      {
+        "command": "duoDiffEdit.copyWordsLeft",
+        "title": "Copy Changed Words Left",
+        "category": "Duo Diff Edit"
+      },
+      {
+        "command": "duoDiffEdit.copyWordsRight",
+        "title": "Copy Changed Words Right",
+        "category": "Duo Diff Edit"
+      },
+      {
+        "command": "duoDiffEdit.nextBlock",
+        "title": "Next Changed Block",
+        "category": "Duo Diff Edit"
+      },
+      {
+        "command": "duoDiffEdit.previousBlock",
+        "title": "Previous Changed Block",
+        "category": "Duo Diff Edit"
+      },
+      {
+        "command": "duoDiffEdit.nextWords",
+        "title": "Next Changed Words",
+        "category": "Duo Diff Edit"
+      },
+      {
+        "command": "duoDiffEdit.previousWords",
+        "title": "Previous Changed Words",
+        "category": "Duo Diff Edit"
       }
     ],
     "menus": {
@@ -106,6 +136,30 @@
         {
           "command": "duoDiffEdit.copyRight",
           "when": "duoDiffEdit.twoFiles"
+        },
+        {
+          "command": "duoDiffEdit.copyWordsLeft",
+          "when": "duoDiffEdit.twoFiles"
+        },
+        {
+          "command": "duoDiffEdit.copyWordsRight",
+          "when": "duoDiffEdit.twoFiles"
+        },
+        {
+          "command": "duoDiffEdit.nextBlock",
+          "when": "duoDiffEdit.twoFiles"
+        },
+        {
+          "command": "duoDiffEdit.previousBlock",
+          "when": "duoDiffEdit.twoFiles"
+        },
+        {
+          "command": "duoDiffEdit.nextWords",
+          "when": "duoDiffEdit.twoFiles"
+        },
+        {
+          "command": "duoDiffEdit.previousWords",
+          "when": "duoDiffEdit.twoFiles"
         }
       ]
     },
@@ -120,6 +174,42 @@
         "command": "duoDiffEdit.copyRight",
         "key": "alt+right",
         "mac": "ctrl+alt+right",
+        "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
+      },
+      {
+        "command": "duoDiffEdit.previousBlock",
+        "key": "alt+up",
+        "mac": "ctrl+alt+up",
+        "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
+      },
+      {
+        "command": "duoDiffEdit.nextBlock",
+        "key": "alt+down",
+        "mac": "ctrl+alt+down",
+        "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
+      },
+      {
+        "command": "duoDiffEdit.copyWordsLeft",
+        "key": "shift+alt+left",
+        "mac": "ctrl+shift+alt+left",
+        "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
+      },
+      {
+        "command": "duoDiffEdit.copyWordsRight",
+        "key": "shift+alt+right",
+        "mac": "ctrl+shift+alt+right",
+        "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
+      },
+      {
+        "command": "duoDiffEdit.previousWords",
+        "key": "shift+alt+up",
+        "mac": "ctrl+shift+alt+up",
+        "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
+      },
+      {
+        "command": "duoDiffEdit.nextWords",
+        "key": "shift+alt+down",
+        "mac": "ctrl+shift+alt+down",
         "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
       }
     ]
