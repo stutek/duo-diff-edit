@@ -390,10 +390,29 @@ exports.activate = (ctx) => {
     proposals = new Proposals(dir);
     ctx.subscriptions.push(proposals, vscode.workspace.registerFileSystemProvider(SCHEME, proposals, { isCaseSensitive: process.platform === 'linux' }));
   }
+  // A save with Ctrl+S on either side of a diff of two files is one line in the events file (mailbox.events): the
+  // agent's review starts from it, as files.autoSave saves on its own too and the disk alone cannot tell them apart.
+  const eventsDir = box.events();
+  let eventsRefused;
+  try { eventsRefused = box.prepare(eventsDir); } catch (e) { eventsRefused = String(e); }
+  if (!eventsRefused) {
+    const saves = path.join(eventsDir, 'saves');
+    ctx.subscriptions.push(vscode.workspace.onWillSaveTextDocument((e) => {
+      if (e.reason !== vscode.TextDocumentSaveReason.Manual) return;
+      const key = e.document.uri.toString();
+      const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs)
+        .find((x) => twoFiles(x.input) && (x.input.original.toString() === key || x.input.modified.toString() === key));
+      if (!t) return;
+      try {
+        if (fs.existsSync(saves) && fs.statSync(saves).size > 1e6) fs.truncateSync(saves);   // a day of saves is a few kB
+        fs.appendFileSync(saves, box.saveLine(new Date(), t.input.original.toString() === key ? 'left' : 'right', t.input.modified.fsPath), { mode: 0o600 });
+      } catch (err) { log.warn(`events: ${err}`); }
+    }));
+  }
   const mailbox = box.location();
   let refused;
   try { refused = box.prepare(mailbox); } catch (e) { refused = String(e); }
-  log.info(`version ${ctx.extension.packageJSON.version}, trusted ${vscode.workspace.isTrusted}, mailbox ${mailbox}${refused ? ` refused: ${refused}` : ''}, proposals ${dir}${proposalsRefused ? ` refused: ${proposalsRefused}` : ''}`);
+  log.info(`version ${ctx.extension.packageJSON.version}, trusted ${vscode.workspace.isTrusted}, mailbox ${mailbox}${refused ? ` refused: ${refused}` : ''}, proposals ${dir}${proposalsRefused ? ` refused: ${proposalsRefused}` : ''}, events ${eventsDir}${eventsRefused ? ` refused: ${eventsRefused}` : ''}`);
   if (refused) return void fail(`the request mailbox is not safe to use: ${refused}`);
   const ours = (name) => path.join(mailbox, `.${process.pid}-${name}`);
   const tidy = (names) => {   // a claimed file a crashed window left behind

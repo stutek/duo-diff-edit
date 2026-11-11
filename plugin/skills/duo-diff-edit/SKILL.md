@@ -50,6 +50,7 @@ done
 
 - `SAVE left` with the sum of your own write: skip it. Any other `SAVE left` is the user's work on your proposal: keep it, and build the next round on it.
 - `SAVE right`: the user's file changed (blocks taken, their own text). Judge the change against the project's own criteria, then propose the next round (step 2).
+- **Ctrl+S:** with `files.autoSave` the disk cannot tell a save the user meant from one Visual Studio Code made. The extension writes each save the user makes (Ctrl+S, File → Save) on a side of the diff as a line `<ISO time> SAVE manual left|right <the user's file>` to `$D/duo-diff-edit-events/saves`; follow it with `tail -n0 -F "$D/duo-diff-edit-events/saves"` next to the watcher and take such a line as "done, review now", without waiting.
 - **Learn:** compare what the user took, rewrote or left with your last proposal for the same place. When they rewrite the same kind of proposal a second time, record it as a rule or preference in the project's rules file and say so in your answer.
 
 ## Index mode (git)

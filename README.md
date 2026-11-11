@@ -60,6 +60,8 @@ Write a file with any name into `<dir>/duo-diff-edit/`, where `<dir>` is `$XDG_R
 
 The window whose workspace holds the path takes the request and deletes it; for `git` the repository must be open in its Source Control. If no window has the project open, the focused window takes a `pair` or `saved` request after 1.5 s; for `git` it opens the repository's folder in a new window, and that window takes it. A request older than 60 s is dropped, so reloading a window never replays old clicks. What the extension did is in **Output → Duo Diff Edit**.
 
+Each save you make with Ctrl+S on a side of a diff of two files (not those of `files.autoSave`) is a line `<ISO time> SAVE manual left|right <your file>` in `<dir>/duo-diff-edit-events/saves`, so an agent can review the moment you say you are done.
+
 What the mailbox trusts and refuses: [SECURITY.md](SECURITY.md).
 
 ## Platforms

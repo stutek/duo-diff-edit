@@ -79,6 +79,12 @@ test('proposals: beside the mailbox; a proposal sits at its file\'s absolute pat
   assert.equal(box.proposalOf('c:/Users/me/a.md', wdir, true), `${wdir}\\c\\Users\\me\\a.md`);
 });
 
+test('events: beside the mailbox; a Ctrl+S is one line, time first and the path, spaces and all, last', () => {
+  assert.equal(box.events({ XDG_RUNTIME_DIR: '/run/user/1000' }, '/home/me'), path.join('/run/user/1000', 'duo-diff-edit-events'));
+  assert.equal(box.saveLine(new Date(Date.UTC(2026, 10, 12, 0, 25, 1, 123)), 'left', '/home/me/CV a.md'),
+    '2026-11-12T00:25:01.123Z SAVE manual left /home/me/CV a.md\n');
+});
+
 test('toPath: Git Bash drive paths on Windows', { skip: !WIN && 'Windows paths' }, () => {
   assert.equal(box.toPath('/c/Users/me/a.md'), 'C:\\Users\\me\\a.md');
 });

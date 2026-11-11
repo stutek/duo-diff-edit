@@ -83,6 +83,9 @@ exports.run = async () => {
     check(await until(() => left.getText() === right.getText(), 3000), 'Copy Block Left: the right block replaces the proposal');
     await left.save();
     check(await until(() => fs.readFileSync(proposal, 'utf8') === right.getText(), 3000), 'left: saving writes the proposal file');
+    const saves = path.join(process.env.XDG_RUNTIME_DIR, 'duo-diff-edit-events', 'saves');
+    check(await until(() => / SAVE manual left /.test(fs.readFileSync(saves, 'utf8')) && fs.readFileSync(saves, 'utf8').trimEnd().endsWith(` left ${file}`), 3000),
+      'events: a save by the user (not files.autoSave) on the left is one line, with the user\'s file');
 
     // the built-in Revert Block (the gutter arrow →) works on this diff too
     fs.writeFileSync(proposal, right.getText().replace('third line', 'third line, proposed'));

@@ -31,6 +31,11 @@ const location = (env = process.env, home = os.homedir()) => path.join(base(env,
 // drive letter, lower case, is the first folder): agent and extension find the proposal of a file without asking
 // each other. As a shell line: P="${XDG_RUNTIME_DIR:-$HOME/.cache}/duo-diff-edit-proposals$F" (Git Bash: F=/c/…).
 const proposals = (env = process.env, home = os.homedir()) => path.join(base(env, home), 'duo-diff-edit-proposals');
+// What the user did that the files on disk do not tell: a save with Ctrl+S (files.autoSave saves on its own as well).
+// One line per event, appended to <dir>/saves by every window: `<ISO time> SAVE manual left|right <the user's file>`,
+// the path last, as it may hold spaces. As a shell line: tail -n0 -F "${XDG_RUNTIME_DIR:-$HOME/.cache}/duo-diff-edit-events/saves".
+const events = (env = process.env, home = os.homedir()) => path.join(base(env, home), 'duo-diff-edit-events');
+const saveLine = (when, side, file) => `${when.toISOString()} SAVE manual ${side} ${file}\n`;
 function proposalOf(file, dir, win = WIN) {   // '' for a path that would leave dir (.. segments)
   const p = (win ? path.win32 : path.posix), abs = p.resolve(file);
   const m = win && /^([a-zA-Z]):[\\/]*(.*)$/.exec(abs);
@@ -116,4 +121,4 @@ function decide({ name, lines, age, complete = true, roots, focused, home = os.h
   return { action: 'forward', folder: root };
 }
 
-module.exports = { MAX_REQUEST, ORPHAN_AFTER, STALE_AFTER, FORWARDED, location, proposals, proposalOf, prepare, readRequest, parse, toPath, real, rootsOf, inside, findRoot, decide };
+module.exports = { MAX_REQUEST, ORPHAN_AFTER, STALE_AFTER, FORWARDED, location, proposals, proposalOf, events, saveLine, prepare, readRequest, parse, toPath, real, rootsOf, inside, findRoot, decide };
