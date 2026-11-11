@@ -64,6 +64,11 @@
         "category": "Duo Diff Edit"
       },
       {
+        "command": "duoDiffEdit.undo",
+        "title": "Undo (the Last Copy from This Side)",
+        "category": "Duo Diff Edit"
+      },
+      {
         "command": "duoDiffEdit.nextBlock",
         "title": "Next Changed Block",
         "category": "Duo Diff Edit"
@@ -147,6 +152,10 @@
           "when": "duoDiffEdit.twoFiles"
         },
         {
+          "command": "duoDiffEdit.undo",
+          "when": "duoDiffEdit.twoFiles"
+        },
+        {
           "command": "duoDiffEdit.nextBlock",
           "when": "duoDiffEdit.twoFiles"
         },
@@ -175,6 +184,12 @@
         "command": "duoDiffEdit.copyRight",
         "key": "alt+right",
         "mac": "ctrl+alt+right",
+        "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
+      },
+      {
+        "command": "duoDiffEdit.undo",
+        "key": "ctrl+z",
+        "mac": "cmd+z",
         "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
       },
       {

@@ -175,10 +175,23 @@ exports.run = async () => {
     check(await until(() => right.getText() === 'P ONE\nP TWO\nend\n', 3000), 'Copy Block Right: a whole-line selection takes that line');
     await right.save();
 
+    // Undo on the side a copy came from undoes the copy on the other side (as in Meld)
+    const mineEnd = new vscode.WorkspaceEdit();
+    mineEnd.replace(right.uri, right.lineAt(2).range, 'END');
+    await vscode.workspace.applyEdit(mineEnd);
+    ed = await cursorOn('right', 2);
+    await vscode.commands.executeCommand('duoDiffEdit.copyLeft');
+    check(await until(() => left.lineAt(2).text === 'END', 3000), 'Copy Block Left: before the undo');
+    ed = await cursorOn('right', 2);
+    await vscode.commands.executeCommand('duoDiffEdit.undo');
+    check(await until(() => left.lineAt(2).text === 'end', 3000) && right.lineAt(2).text === 'END',
+      `Undo on the right: undoes the copy on the left, keeps the right (${JSON.stringify([left.lineAt(2).text, right.lineAt(2).text])})`);
+    await right.save();
+
     // the keys, as Meld's (Visual Studio Code on a display without a window manager has no key focus to press them)
     const keys = Object.fromEntries(vscode.extensions.getExtension('stutek.duo-diff-edit').packageJSON.contributes.keybindings
       .map((k) => [k.key, k.command.replace('duoDiffEdit.', '')]));
-    const want = { 'alt+left': 'copyLeft', 'alt+right': 'copyRight', 'alt+up': 'previousBlock', 'alt+down': 'nextBlock',
+    const want = { 'alt+left': 'copyLeft', 'alt+right': 'copyRight', 'ctrl+z': 'undo', 'alt+up': 'previousBlock', 'alt+down': 'nextBlock',
       'shift+alt+left': 'copyWordsLeft', 'shift+alt+right': 'copyWordsRight', 'shift+alt+up': 'previousWords', 'shift+alt+down': 'nextWords' };
     check(JSON.stringify(keys) === JSON.stringify(want), `keys: ${JSON.stringify(keys)}`);
   } catch (e) {
