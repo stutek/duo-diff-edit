@@ -34,11 +34,11 @@
     "commands": [
       {
         "command": "duoDiffEdit.openPair",
-        "title": "Open diff (proposal ↔ file)"
+        "title": "Open in Duo Diff Edit"
       },
       {
         "command": "duoDiffEdit.open",
-        "title": "Open diff (stage ↔ buffer)"
+        "title": "Open in Duo Diff Edit (stage ↔ buffer)"
       },
       {
         "command": "duoDiffEdit.copyLeft",

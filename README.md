@@ -22,10 +22,10 @@ The keys are Meld's. A block is every changed block the cursor or selection touc
 
 It has two parts:
 
-| Part                              | What it does                                                                                                                                                                                                                                                                          |
-|-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Extension for Visual Studio Code  | Opens the proposal ↔ file diff in an auxiliary window on request (a small file in a mailbox directory) or from the Explorer context menu (**Open diff (proposal ↔ file)**), and adds the ← and → copy commands. The older index ↔ buffer diff stays (**Open diff (stage ↔ buffer)**). |
-| Plugin for Claude Code (optional) | A skill that teaches the agent the protocol (open the diff, write the proposal, review each time you save), and a band of **📖** buttons above the prompt that opens the diff for every file the last answer mentions.                                                                 |
+| Part                              | What it does                                                                                                                                                                                                                                                                                |
+|-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Extension for Visual Studio Code  | Opens the proposal ↔ file diff in an auxiliary window on request (a small file in a mailbox directory) or from the Explorer context menu (**Open in Duo Diff Edit**), and adds the ← and → copy commands. The older index ↔ buffer diff stays (**Open in Duo Diff Edit (stage ↔ buffer)**). |
+| Plugin for Claude Code (optional) | A skill that teaches the agent the protocol (open the diff, write the proposal, review each time you save), and a band of **📖** buttons above the prompt that opens the diff for every file the last answer mentions.                                                                       |
 
 The skill is plain shell, so any agent that can run commands can follow it.
 
@@ -46,7 +46,7 @@ The skill is plain shell, so any agent that can run commands can follow it.
 
 Ask the agent, for example: *"Let's polish notes.md together with duo diff edit."* The agent opens the diff and starts proposing. Take what you like, write your own, and save; the agent reviews what you saved and proposes the next round on top of your latest text.
 
-Open the diff yourself with a **📖** button above the Claude Code prompt, or right-click a file in the Explorer: **Open diff (proposal ↔ file)**.
+Open the diff yourself with a **📖** button above the Claude Code prompt, or right-click a file in the Explorer: **Open in Duo Diff Edit**.
 
 A **📖** click can also start a skill for the file, on the model and effort that skill sets: choose it in `/config` (*Skill a 📖 click starts*), or ask the agent to set it up. How, and a template for your own skill: [the skill's Configure section](plugin/skills/duo-diff-edit/SKILL.md#configure-what-a--click-starts-skill-model-effort).
 

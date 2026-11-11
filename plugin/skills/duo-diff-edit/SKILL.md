@@ -54,7 +54,7 @@ done
 
 ## Index mode (git)
 
-The older mode shows the git index (stage) on the left and the user's editor buffer on the right; the user stages their own text with **Stage Block** (+), which also rejects your proposal for that block. Open it with `git <absolute path>` (on Windows `pwd -W` gives the `C:/…` form), or the user right-clicks a file: **Open diff (stage ↔ buffer)**. If no window has the project open, the focused window opens the project's folder in a new window, which takes it. A file outside git history enters the index empty, so all its content shows as new. Paths in git commands are relative to the repository root.
+The older mode shows the git index (stage) on the left and the user's editor buffer on the right; the user stages their own text with **Stage Block** (+), which also rejects your proposal for that block. Open it with `git <absolute path>` (on Windows `pwd -W` gives the `C:/…` form), or the user right-clicks a file: **Open in Duo Diff Edit (stage ↔ buffer)**. If no window has the project open, the focused window opens the project's folder in a new window, which takes it. A file outside git history enters the index empty, so all its content shows as new. Paths in git commands are relative to the repository root.
 
 1. **Propose.** Take the current index version and its hash, edit the copy, then write it back only if the user has not staged in the meantime:
    ```bash
