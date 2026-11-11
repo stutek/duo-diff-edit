@@ -18,7 +18,8 @@
   ],
   "main": "./extension.js",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onFileSystem:duo-diff-edit-proposal"
   ],
   "extensionDependencies": [
     "vscode.git"

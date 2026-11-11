@@ -42,11 +42,20 @@ exports.run = async () => {
     const proposal = path.join(process.env.XDG_RUNTIME_DIR, 'duo-diff-edit-proposals', file.replace(/^\/+/, ''));
     const start = fs.readFileSync(file, 'utf8');
 
+    // a tab with the diff's title in the main window, as a reload restores one: the request must not open there
+    const stale = path.join(path.dirname(file), 'stale.md');
+    fs.writeFileSync(stale, 'stale\n');
+    await vscode.commands.executeCommand('vscode.diff', vscode.Uri.file(stale), vscode.Uri.file(stale), 'stale.md (proposal ↔ yours)',
+      { viewColumn: vscode.ViewColumn.One, preview: false });
+    const main = vscode.window.tabGroups.activeTabGroup;
+
     // the agent asks for the diff (as a 📖 click does)
     fs.mkdirSync(box, { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(box, `${Date.now()}`), `pair ${file}\n`);
     check(await until(() => diffTab(), 20000), 'pair: the diff opens');
     const t = diffTab();
+    check(t && t.group !== main && vscode.window.tabGroups.all.length > 1,
+      'pair: in a window of its own, not in a group that only has a diff with the same kind of title');
     check(t && t.input.original.scheme === 'duo-diff-edit-proposal' && t.input.original.path === t.input.modified.path,
       'pair: left is the proposal of the same file, right is the file');
     check(fs.existsSync(proposal) && fs.readFileSync(proposal, 'utf8') === start, 'pair: a new proposal starts as a copy of the file');

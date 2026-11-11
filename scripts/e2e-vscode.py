@@ -208,7 +208,9 @@ try:
             if line.startswith(('ok', 'FAIL')):
                 check(line.startswith('ok'), line[6:])
         if 'note  right: not loaded from disk' in (result.read_text(encoding='utf-8') if result.exists() else ''):
-            watcher = '\n'.join(p.read_text(errors='replace') for p in (u / 'logs').glob('*/window*/fileWatcher.log'))
+            # the watcher's failure goes to fileWatcher.log or, when that log is not made, to another of the window
+            watcher = '\n'.join(p.read_text(errors='replace') for p in (u / 'logs').glob('**/*.log')
+                                if 'Failed to watch' in p.read_text(errors='replace'))
             print('note  Visual Studio Code\'s file watcher has no inotify instance (EMFILE); raise the limit: '
                   'sudo sysctl -w fs.inotify.max_user_instances=1024' if 'EMFILE' in watcher else
                   'note  Visual Studio Code did not reload the right side, and its file watcher logged no EMFILE')

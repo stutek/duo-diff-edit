@@ -70,12 +70,17 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const SUFFIX = ' (stage ↔ buffer)';   // diff titles; group() finds the auxiliary window by them
 const PAIR = ' (proposal ↔ yours)';
 let storage;              // extension global storage: the KWin script
-let auxGroup;             // tab group in the auxiliary window
+let auxGroup;             // tab group in the auxiliary window this extension host opened
 let roots = [];           // this window's workspace folders (mailbox.rootsOf)
-const group = () => {
-  const all = vscode.window.tabGroups.all;
-  if (auxGroup && all.includes(auxGroup)) return auxGroup;
-  return (auxGroup = all.find((g) => g.tabs.some((t) => t.label.endsWith(SUFFIX) || t.label.endsWith(PAIR))));   // also after a reload
+// Only a window opened in this run counts: after a reload, a group with one of these diffs may be a restored
+// window that no longer shows, or the main window, and a diff opened there is never seen.
+const group = () => (auxGroup && vscode.window.tabGroups.all.includes(auxGroup) ? auxGroup : undefined);
+const isOurDiff = (t) => t.label.endsWith(SUFFIX) || t.label.endsWith(PAIR);
+// At start, the diffs a reload restored are closed (unless they hold unsaved edits), so their window does not
+// linger next to the one the next request opens.
+const closeRestored = () => {
+  const stale = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => isOurDiff(t) && !t.isDirty);
+  if (stale.length) vscode.window.tabGroups.close(stale).then(() => log.info(`closed ${stale.length} diff(s) restored from before the reload`), (e) => log.warn(`closing restored diffs: ${e}`));
 };
 
 // The left side of a pair: the proposal on disk (mailbox.proposalOf), under a scheme of its own whose URI path is
@@ -317,6 +322,7 @@ exports.activate = (ctx) => {
   storage = ctx.globalStorageUri.fsPath;
   log = vscode.window.createOutputChannel('Duo Diff Edit', { log: true });
   ctx.subscriptions.push(log);
+  closeRestored();
   // no await: the notification's promise resolves only when it is closed
   const fail = (e) => { log.error(String(e)); vscode.window.showErrorMessage(`Duo Diff Edit: ${e}`); };
   const setRoots = () => { roots = box.rootsOf((vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath)); };
