@@ -207,6 +207,8 @@ async function atCursor(what, byWord) {
   return { ed, side, a, b, A, B, list: byWord ? words(A, B, list, trim) : list };
 }
 const pos = (p) => new vscode.Position(p[0], p[1]);
+// a selection of whole lines (Shift+↓) ends at the start of the next line, which it does not hold
+const lastLine = (s) => (s.end.line > s.start.line && s.end.character === 0 ? s.end.line - 1 : s.end.line);
 
 // Copy Block / Copy Words Left and Right: the blocks or changes the cursor or selection touches (the rule of
 // Revert Block, blocks.touched; for words blocks.touchedWords), from the other side.
@@ -215,8 +217,8 @@ async function copy(targetSide, byWord) {
   if (!c) return;
   const { ed, side, a, b, A, B, list } = c;
   const hits = list.filter((k) => ed.selections.some((s) => (byWord
-    ? touchedWords([k], side, [s.start.line, s.start.character], [s.end.line, s.end.character])
-    : touched([k], side, s.start.line, s.end.line)).length));
+    ? touchedWords([k], side, [s.start.line, s.start.character], [s.end.line, s.end.character]).length > 0
+    : touched(list, side, s.start.line, lastLine(s)).includes(k))));
   if (!hits.length) return void vscode.window.setStatusBarMessage(`Duo Diff Edit: no ${byWord ? 'changed word' : 'changed block'} at the cursor`, 3000);
   const [target, T, S] = targetSide === 'a' ? [a, A, B] : [b, B, A];
   const edit = new vscode.WorkspaceEdit();

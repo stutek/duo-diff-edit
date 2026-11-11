@@ -34,12 +34,24 @@ function blocks(a, b, ignoreTrimWhitespace = true) {
     if (i < n && (j === m || L[i + 1][j] >= L[i][j + 1])) i++; else j++;   // removed lines first, then added
   }
   close();
-  return out;
+  // a block of as many lines on both sides is line against line (a paragraph per line, each changed on its own):
+  // it moves line by line, where Visual Studio Code draws and reverts it as one
+  return out.flatMap((k) => {
+    const n = k.a[1] - k.a[0];
+    if (n < 2 || n !== k.b[1] - k.b[0]) return [k];
+    return Array.from({ length: n }, (_, i) => ({ a: [k.a[0] + i, k.a[0] + i + 1], b: [k.b[0] + i, k.b[0] + i + 1] }));
+  });
 }
 
 // The blocks the selection on one side ('a' or 'b') touches; first and last are 0-based lines of the selection.
-const touched = (list, side, first, last) =>
-  list.filter((k) => Math.max(k[side][0], first) <= Math.min(k[side][1], last));
+// A cursor (first === last) inside a block picks that block alone, so of two blocks one right below the other, the
+// cursor's line wins; on no block's line, it picks the block it is right below, or where one side's lines were removed.
+function touched(list, side, first, last) {
+  const near = list.filter((k) => Math.max(k[side][0], first) <= Math.min(k[side][1], last));
+  if (first !== last) return near;
+  const inside = near.filter((k) => k[side][0] <= first && first < k[side][1]);
+  return inside.length ? inside : near;
+}
 
 // The edit that makes block k of the target side equal to the source side: { from: [line, character], to: [line,
 // character], text }. Lines are a text split at its line breaks, so the last line has none (it is '' when the text

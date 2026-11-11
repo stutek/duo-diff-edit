@@ -150,6 +150,22 @@ exports.run = async () => {
     check(await until(() => right.getText() === left.getText(), 3000), 'Copy Block Right after Next Changed Block: the sides are equal');
     await Promise.all([left.save(), right.save()]);
 
+    // two changed lines one right below the other (a paragraph per line): Alt+→ takes the cursor's line only,
+    // and a selection of a whole line (ending at the start of the next) takes that line only
+    const whole = new vscode.WorkspaceEdit();
+    whole.replace(right.uri, new vscode.Range(0, 0, right.lineCount, 0), 'p one\np two\nend\n');
+    await vscode.workspace.applyEdit(whole);
+    await right.save();
+    fs.writeFileSync(proposal, 'P ONE\nP TWO\nend\n');
+    check(await until(() => left.getText() === 'P ONE\nP TWO\nend\n', 5000), 'left: loads the next proposal');
+    ed = await cursorOn('right', 1);
+    await vscode.commands.executeCommand('duoDiffEdit.copyRight');
+    check(await until(() => right.getText() === 'p one\nP TWO\nend\n', 3000), `Copy Block Right: of two changed lines one below the other, only the cursor's (${JSON.stringify(right.getText())})`);
+    ed.selection = new vscode.Selection(0, 0, 1, 0);
+    await vscode.commands.executeCommand('duoDiffEdit.copyRight');
+    check(await until(() => right.getText() === 'P ONE\nP TWO\nend\n', 3000), 'Copy Block Right: a whole-line selection takes that line');
+    await right.save();
+
     // the keys, as Meld's (Visual Studio Code on a display without a window manager has no key focus to press them)
     const keys = Object.fromEntries(vscode.extensions.getExtension('stutek.duo-diff-edit').packageJSON.contributes.keybindings
       .map((k) => [k.key, k.command.replace('duoDiffEdit.', '')]));

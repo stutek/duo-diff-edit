@@ -36,6 +36,16 @@ test('touched: the rule of Revert Block, a block [s, e) is picked by a cursor on
   assert.deepEqual(touched(list, 'b', 3, 5), list);        // a selection over both
 });
 
+test('blocks: as many changed lines on both sides move line by line; a cursor picks its own line', () => {
+  const list = blocks(['x', 'one', 'two', 'y'], ['x', 'ONE', 'TWO', 'y']);
+  assert.deepEqual(list, [{ a: [1, 2], b: [1, 2] }, { a: [2, 3], b: [2, 3] }]);
+  assert.deepEqual(touched(list, 'b', 2, 2), [list[1]]);   // not also the block right above
+  assert.deepEqual(touched(list, 'b', 1, 1), [list[0]]);
+  assert.deepEqual(touched(list, 'b', 3, 3), [list[1]]);   // right below the last: as before
+  assert.deepEqual(touched(list, 'b', 1, 2), list);
+  assert.deepEqual(blocks(['x', 'one', 'two'], ['x', 'ONE', 'TWO', 'three']), [{ a: [1, 3], b: [1, 4] }]);   // uneven: one block
+});
+
 test('replacement: copying every block makes the target equal to the source, either way, with or without a final line break', () => {
   let seed = 7;
   const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
