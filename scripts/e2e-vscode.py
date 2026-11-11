@@ -120,14 +120,23 @@ def start(u, folder, extra=(), environ=None):
 
 
 def stop(p):
+    def alive():   # any process left in the session started for this window (Electron's children outlive the CLI)
+        try:
+            os.killpg(p.pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
     try:
-        os.killpg(p.pid, signal.SIGTERM)   # the session started for this window only
+        os.killpg(p.pid, signal.SIGTERM)
         p.wait(timeout=20)
     except (ProcessLookupError, subprocess.TimeoutExpired):
+        pass
+    if not wait_for(lambda: not alive(), 10):
         try:
             os.killpg(p.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        wait_for(lambda: not alive(), 5)
 
 
 def request(name, line, age=0.0):
