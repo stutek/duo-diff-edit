@@ -65,7 +65,12 @@
       },
       {
         "command": "duoDiffEdit.undo",
-        "title": "Undo (the Last Copy from This Side)",
+        "title": "Undo (Copies Included)",
+        "category": "Duo Diff Edit"
+      },
+      {
+        "command": "duoDiffEdit.redo",
+        "title": "Redo (Copies Included)",
         "category": "Duo Diff Edit"
       },
       {
@@ -156,6 +161,10 @@
           "when": "duoDiffEdit.twoFiles"
         },
         {
+          "command": "duoDiffEdit.redo",
+          "when": "duoDiffEdit.twoFiles"
+        },
+        {
           "command": "duoDiffEdit.nextBlock",
           "when": "duoDiffEdit.twoFiles"
         },
@@ -190,6 +199,18 @@
         "command": "duoDiffEdit.undo",
         "key": "ctrl+z",
         "mac": "cmd+z",
+        "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
+      },
+      {
+        "command": "duoDiffEdit.redo",
+        "key": "ctrl+shift+z",
+        "mac": "cmd+shift+z",
+        "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
+      },
+      {
+        "command": "duoDiffEdit.redo",
+        "key": "ctrl+y",
+        "mac": "cmd+shift+z",
         "when": "duoDiffEdit.twoFiles && isInDiffEditor && editorTextFocus"
       },
       {

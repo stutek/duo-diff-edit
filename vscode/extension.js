@@ -232,26 +232,42 @@ async function copy(targetSide, byWord) {
     edit.replace(target.uri, new vscode.Range(pos(r.from), pos(r.to)), r.text);
   }
   if (!(await vscode.workspace.applyEdit(edit))) return void vscode.window.showWarningMessage('Duo Diff Edit: that side cannot be edited.');
-  copies.push({ source: ed.document.uri.toString(), sourceVersion: ed.document.version, target: target.uri.toString(), after: target.getText() });
+  copies.push({ source: ed.document.uri.toString(), sourceText: ed.document.getText(), target: target.uri.toString(), after: target.getText() });
   if (copies.length > 50) copies.shift();
+  undone.length = 0;
   log.info(`copied ${hits.length} ${byWord ? 'change(s)' : 'block(s)'} to the ${targetSide === 'a' ? 'left' : 'right'}: ${target.uri.fsPath}`);
 }
 
-// Undo (Ctrl+Z) on the side a copy came from undoes the copy on the other side, as in Meld, while neither side
-// changed since; otherwise it is the editor's own Undo.
-const copies = [];   // the copies made, latest last: source, its version then, target, the target's text after
-async function undo() {
-  const ed = vscode.window.activeTextEditor, input = diffOf(ed), top = copies[copies.length - 1];
-  const target = top && vscode.workspace.textDocuments.find((d) => d.uri.toString() === top.target);
-  if (!input || !top || top.source !== ed.document.uri.toString() || top.sourceVersion !== ed.document.version
-    || !target || target.getText() !== top.after) return vscode.commands.executeCommand('undo');
-  copies.pop();
-  const toLeft = top.target === input.original.toString();
+// Undo and Redo as in a single editor, copies included. On the side a copy went to, the copy is an edit like any
+// other (one step of that side's Undo). On the side it came from, Undo (Ctrl+Z) undoes it once this side is back
+// where it was at the copy (its own later edits undone first) and the other side is as the copy left it; Redo
+// (Ctrl+Shift+Z, Ctrl+Y) brings it back the same way. Otherwise both are the editor's own.
+const copies = [];   // copies made, latest last: { source, sourceText, target, after: the target's text after it }
+const undone = [];   // copies undone from their source side, latest last: { source, sourceText, target, before }
+const textOf = (uri) => { const d = vscode.workspace.textDocuments.find((x) => x.uri.toString() === uri); return d && d.getText(); };
+async function onOtherSide(input, targetUri, cmd) {
+  const toLeft = targetUri === input.original.toString();
   const focus = (left) => vscode.commands.executeCommand(`workbench.action.compareEditor.focus${left ? 'Secondary' : 'Primary'}Side`);
   await focus(toLeft);
-  await vscode.commands.executeCommand('undo');
+  await vscode.commands.executeCommand(cmd);
   await focus(!toLeft);
-  log.info(`undid a copy to the ${toLeft ? 'left' : 'right'}: ${target.uri.fsPath}`);
+  log.info(`${cmd} of a copy to the ${toLeft ? 'left' : 'right'}`);
+}
+async function undo() {
+  const ed = vscode.window.activeTextEditor, input = diffOf(ed), top = copies[copies.length - 1];
+  if (!input || !top || top.source !== ed.document.uri.toString() || top.sourceText !== ed.document.getText()
+    || textOf(top.target) !== top.after) return vscode.commands.executeCommand('undo');
+  copies.pop();
+  await onOtherSide(input, top.target, 'undo');
+  undone.push({ source: top.source, sourceText: top.sourceText, target: top.target, before: textOf(top.target) });
+}
+async function redo() {
+  const ed = vscode.window.activeTextEditor, input = diffOf(ed), top = undone[undone.length - 1];
+  if (!input || !top || top.source !== ed.document.uri.toString() || top.sourceText !== ed.document.getText()
+    || textOf(top.target) !== top.before) return vscode.commands.executeCommand('redo');
+  undone.pop();
+  await onOtherSide(input, top.target, 'redo');
+  copies.push({ source: top.source, sourceText: top.sourceText, target: top.target, after: textOf(top.target) });
 }
 
 // Next / Previous Block and Change (as Meld's Alt+↓ / Alt+↑): on the side the cursor is on, so the copy keys that
@@ -356,7 +372,7 @@ exports.activate = (ctx) => {
   for (const [id, fn] of [['copyLeft', () => copy('a', false)], ['copyRight', () => copy('b', false)],
     ['copyWordsLeft', () => copy('a', true)], ['copyWordsRight', () => copy('b', true)],
     ['nextBlock', () => go(1, false)], ['previousBlock', () => go(-1, false)],
-    ['nextWords', () => go(1, true)], ['previousWords', () => go(-1, true)], ['undo', undo]]) {
+    ['nextWords', () => go(1, true)], ['previousWords', () => go(-1, true)], ['undo', undo], ['redo', redo]]) {
     ctx.subscriptions.push(vscode.commands.registerCommand(`duoDiffEdit.${id}`, () => fn().catch(fail)));
   }
   const setKey = () => {   // shows the copy buttons and keys only in a diff of two editable files

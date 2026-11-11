@@ -186,12 +186,22 @@ exports.run = async () => {
     await vscode.commands.executeCommand('duoDiffEdit.undo');
     check(await until(() => left.lineAt(2).text === 'end', 3000) && right.lineAt(2).text === 'END',
       `Undo on the right: undoes the copy on the left, keeps the right (${JSON.stringify([left.lineAt(2).text, right.lineAt(2).text])})`);
+    await vscode.commands.executeCommand('duoDiffEdit.redo');
+    check(await until(() => left.lineAt(2).text === 'END', 3000), 'Redo on the right: the copy is back on the left');
+    // the user types on the right after the copy: the first Undo takes the typing, the second the copy
+    const typed = new vscode.WorkspaceEdit();
+    typed.insert(right.uri, new vscode.Position(0, 0), 'x');
+    await vscode.workspace.applyEdit(typed);
+    await vscode.commands.executeCommand('duoDiffEdit.undo');
+    check(await until(() => right.lineAt(0).text === 'P ONE', 3000) && left.lineAt(2).text === 'END', 'Undo on the right: first its own typing');
+    await vscode.commands.executeCommand('duoDiffEdit.undo');
+    check(await until(() => left.lineAt(2).text === 'end', 3000) && right.lineAt(2).text === 'END', 'Undo on the right: then the copy, as in one editor');
     await right.save();
 
     // the keys, as Meld's (Visual Studio Code on a display without a window manager has no key focus to press them)
     const keys = Object.fromEntries(vscode.extensions.getExtension('stutek.duo-diff-edit').packageJSON.contributes.keybindings
       .map((k) => [k.key, k.command.replace('duoDiffEdit.', '')]));
-    const want = { 'alt+left': 'copyLeft', 'alt+right': 'copyRight', 'ctrl+z': 'undo', 'alt+up': 'previousBlock', 'alt+down': 'nextBlock',
+    const want = { 'alt+left': 'copyLeft', 'alt+right': 'copyRight', 'ctrl+z': 'undo', 'ctrl+shift+z': 'redo', 'ctrl+y': 'redo', 'alt+up': 'previousBlock', 'alt+down': 'nextBlock',
       'shift+alt+left': 'copyWordsLeft', 'shift+alt+right': 'copyWordsRight', 'shift+alt+up': 'previousWords', 'shift+alt+down': 'nextWords' };
     check(JSON.stringify(keys) === JSON.stringify(want), `keys: ${JSON.stringify(keys)}`);
   } catch (e) {
