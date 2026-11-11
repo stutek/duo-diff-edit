@@ -1,0 +1,49 @@
+# Every check on Linux, macOS and Windows, and the extension in a real Visual Studio Code on Linux.
+# Third-party code is pinned: actions by commit (Dependabot proposes updates), Claude Code by version.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Claude Code CLI for plugin validate and test (no login needed)
+        run: npm install --global @anthropic-ai/claude-code@2.1.318
+      - run: python scripts/check.py
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Visual Studio Code, current stable, and a virtual display
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/vscode.tar.gz" https://update.code.visualstudio.com/latest/linux-x64/stable
+          mkdir "$RUNNER_TEMP/vscode"
+          tar -xzf "$RUNNER_TEMP/vscode.tar.gz" -C "$RUNNER_TEMP/vscode" --strip-components=1
+          sudo apt-get update -q && sudo apt-get install -yq xvfb
+      - run: python scripts/build-vsix.py
+      - run: python scripts/e2e-vscode.py --code "$RUNNER_TEMP/vscode/bin/code"

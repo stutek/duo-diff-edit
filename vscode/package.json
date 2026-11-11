@@ -23,6 +23,13 @@
   "extensionDependencies": [
     "vscode.git"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Duo Diff Edit runs git in the workspace, which a repository's configuration can turn into running programs."
+    },
+    "virtualWorkspaces": false
+  },
   "contributes": {
     "commands": [
       {

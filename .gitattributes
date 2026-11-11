@@ -1,0 +1,2 @@
+# LF everywhere, also in a Windows checkout: the .vsix build is byte for byte the same, shell lines in docs stay valid
+* text=auto eol=lf
