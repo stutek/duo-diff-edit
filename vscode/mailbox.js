@@ -36,6 +36,7 @@ const proposals = (env = process.env, home = os.homedir()) => path.join(base(env
 //   <ISO time> SAVE manual left|right <file>   a save with Ctrl+S (files.autoSave saves on its own as well)
 //   <ISO time> ACCEPT <first>-<last> <file>    Accept Suggestion: the proposal's block taken, lines of the user's file
 //   <ISO time> PREFER <first>-<last> <file>    Prefer Mine: the user's block put into the proposal, so the agent rethinks it
+//   <ISO time> STAGE <first>-<last> <file>     Stage agreed lines: lines alike on both sides put into the git index
 // As a shell line: tail -n0 -F "${XDG_RUNTIME_DIR:-$HOME/.cache}/duo-diff-edit-events/saves".
 const events = (env = process.env, home = os.homedir()) => path.join(base(env, home), 'duo-diff-edit-events');
 const eventLine = (when, what, file) => `${when.toISOString()} ${what} ${file}\n`;

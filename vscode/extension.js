@@ -17,7 +17,7 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const box = require('./mailbox');
-const { blocks, touched, replacement, words, touchedWords, wordReplacement } = require('./blocks');
+const { blocks, touched, replacement, words, touchedWords, wordReplacement, apply } = require('./blocks');
 
 // a helper that hangs (qdbus6 without a session bus waits for one) must not stall opening the diff
 const run = (cmd, args) => new Promise((r) => execFile(cmd, args, { timeout: 3000 }, (err, out) => r(err ? '' : out.trim())));
@@ -223,8 +223,18 @@ function emit(what, file) {
   } catch (err) { log.warn(`events: ${err}`); }
 }
 
-// The two buttons over the block the cursor is on, in the editor that has the cursor
+// The two buttons over the block the cursor is on, in the editor that has the cursor; on the right side also a
+// Stage button over each run of agreed, unstaged lines (refreshAgreed)
+const lensChanged = new vscode.EventEmitter();
 function lenses(doc) {
+  const s = doc.uri.scheme === 'file' && agreedOf.get(doc.uri.fsPath);
+  const stage = s ? s.runs.map(([f, l]) => new vscode.CodeLens(new vscode.Range(f, 0, f, 0), {
+    title: `$(check) Stage agreed line${l > f ? 's' : ''}`, command: 'duoDiffEdit.stageAgreed', arguments: [doc.uri.fsPath, [f, l]],
+    tooltip: 'Both sides hold these lines alike; put them into the git index (the file stays as it is)',
+  })) : [];
+  return [...stage, ...cursorLenses(doc)];
+}
+function cursorLenses(doc) {
   const ed = vscode.window.activeTextEditor;
   if (!ed || ed.document !== doc) return [];
   const input = diffOf(ed);
@@ -351,6 +361,67 @@ async function addToIndex(bin, root, f) {   // an untracked file enters the inde
   return (await git(bin, root, ['update-index', '--add', '--cacheinfo', `100644,${empty.out},${rel}`])).code === 0;
 }
 
+// Agreed, not staged: lines of the right side that both sides hold alike but the git index does not yet, light
+// blue, each run with a Stage button that puts just those lines into the index (the file on disk stays as it is).
+// Only for a file in a repository the git extension has open; nothing outside git.
+const AGREED = vscode.window.createTextEditorDecorationType({
+  isWholeLine: true, backgroundColor: 'rgba(80, 160, 255, 0.16)', overviewRulerColor: 'rgba(80, 160, 255, 0.6)',
+  overviewRulerLane: vscode.OverviewRulerLane.Left,
+});
+const indexOf = (bin, root, rel) => new Promise((r) => execFile(bin, ['-c', 'core.fsmonitor=false', '-C', root, 'show', `:${rel}`],
+  { maxBuffer: 64 * 1024 * 1024, encoding: 'utf8' }, (err, out) => r(err ? '' : out)));   // not in the index: empty
+const agreedOf = new Map();   // the user's file → { runs: [[first, last]], root, rel, bin, index, hunks }
+async function agreed(input) {   // the runs of agreed, unstaged lines of one diff of two files, and what staging needs
+  const file = input.modified.fsPath, api = await gitApi();
+  const repo = api.getRepository(input.modified);
+  if (!repo) return undefined;
+  const root = repo.rootUri.fsPath, rel = path.relative(root, box.real(file)).split(path.sep).join('/'), bin = api.git.path;
+  const [a, b] = await Promise.all([vscode.workspace.openTextDocument(input.original), vscode.workspace.openTextDocument(input.modified)]);
+  const A = a.getText().split(eolOf(a)), B = b.getText().split(eolOf(b));
+  const index = await indexOf(bin, root, rel), I = index.split(/\r?\n/);
+  const pairs = blocks(A, B, vscode.workspace.getConfiguration('diffEditor').get('ignoreTrimWhitespace', true));
+  const hunks = blocks(I, B, false);
+  if (!pairs || !hunks) return undefined;
+  // a hunk (index → right) is agreed when no line of it on the right is in a block of the pair; a removal (lines
+  // the right no longer has) when its place is in none
+  const inPair = (line) => pairs.some((k) => (k.b[0] < k.b[1] ? k.b[0] <= line && line < k.b[1] : k.b[0] === line));
+  const lines = (k) => Array.from({ length: k.b[1] - k.b[0] }, (_, i) => k.b[0] + i);
+  const ok = hunks.filter((k) => (k.b[0] < k.b[1] ? !lines(k).some(inPair) : !inPair(k.b[0])));
+  // runs are what shows (lines the right has); removals are staged with Stage All Agreed
+  const runs = ok.filter((k) => k.b[0] < k.b[1]).map((k) => [k.b[0], k.b[1] - 1, k]);
+  return { runs, ok, root, rel, bin, index, I, B, eol: index.includes('\r\n') ? '\r\n' : '\n' };
+}
+async function stageAgreed(file, lines) {   // the agreed hunks on these lines of the right side (all, without lines)
+  const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => twoFiles(x.input) && x.input.modified.scheme === 'file' && x.input.modified.fsPath === file);
+  const s = t && await agreed(t.input);
+  if (!s) return void vscode.window.showInformationMessage('Duo Diff Edit: nothing to stage here (the file is not in a repository Source Control has open).');
+  const pick = lines ? s.runs.filter(([f, l]) => f <= lines[1] && lines[0] <= l).map(([, , k]) => k) : s.ok;
+  if (!pick.length) return void vscode.window.setStatusBarMessage('Duo Diff Edit: no agreed, unstaged lines here', 3000);
+  const next = apply(s.index, pick.map((k) => replacement(s.I, s.B, k, 'a', s.eol)), s.eol);
+  const mode = ((await git(s.bin, s.root, ['ls-files', '-s', '--', s.rel])).out.split(' ')[0]) || '100644';
+  const blob = await git(s.bin, s.root, ['hash-object', '-w', '--stdin'], next);
+  if (blob.code || (await git(s.bin, s.root, ['update-index', '--add', '--cacheinfo', `${mode},${blob.out},${s.rel}`])).code) {
+    return void vscode.window.showWarningMessage('Duo Diff Edit: git did not stage the lines.');
+  }
+  log.info(`staged ${pick.length} agreed hunk(s) of ${file}`);
+  emit(`STAGE ${Math.min(...pick.map((k) => k.b[0])) + 1}-${Math.max(...pick.map((k) => Math.max(k.b[0], k.b[1] - 1))) + 1}`, file);
+  refreshAgreed();
+}
+let agreedTimer;
+function refreshAgreed() {   // the decorations and Stage lenses of every visible diff of two files, a moment after a change
+  clearTimeout(agreedTimer);
+  agreedTimer = setTimeout(async () => {
+    for (const ed of vscode.window.visibleTextEditors) {
+      const input = diffOf(ed);
+      if (!input || ed.document.uri.toString() !== input.modified.toString() || input.modified.scheme !== 'file') continue;
+      let s;
+      try { s = await agreed(input); } catch (e) { log.warn(`agreed: ${e}`); }
+      agreedOf.set(input.modified.fsPath, s);
+      ed.setDecorations(AGREED, s ? s.runs.map(([f, l]) => new vscode.Range(f, 0, l, 0)) : []);
+    }
+    lensChanged.fire();
+  }, 300);
+}
 async function handle([kind, file]) {   // a parsed request: a file in this window's workspace, or an orphan "saved"
   const uri = vscode.Uri.file(file);
   log.info(`open ${kind} ${file}`);
@@ -410,6 +481,7 @@ exports.activate = (ctx) => {
     const t = vscode.window.tabGroups.activeTabGroup.activeTab;
     vscode.commands.executeCommand('setContext', 'duoDiffEdit.twoFiles', (!!t && twoFiles(t.input)) || !!diffOf(vscode.window.activeTextEditor));
     watchRights();
+    refreshAgreed();
   };
   setKey();
   ctx.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(setKey), vscode.window.tabGroups.onDidChangeTabGroups(setKey),
@@ -438,11 +510,22 @@ exports.activate = (ctx) => {
   }
   // Accept Suggestion and Prefer Mine over the block at the cursor (a CodeLens: the diff's own gutter menu takes no
   // extension's buttons without a proposed API); diffEditor.codeLens is on by default (package.json)
-  const lensChanged = new vscode.EventEmitter();
   let lensTimer;
   const relens = () => { clearTimeout(lensTimer); lensTimer = setTimeout(() => lensChanged.fire(), 150); };
   ctx.subscriptions.push(lensChanged, vscode.window.onDidChangeTextEditorSelection(relens), vscode.window.onDidChangeActiveTextEditor(relens),
     vscode.languages.registerCodeLensProvider([{ scheme: 'file' }, { scheme: SCHEME }], { onDidChangeCodeLenses: lensChanged.event, provideCodeLenses: lenses }));
+  // agreed, unstaged lines follow both sides, the visible editors and the index (the git extension's state)
+  ctx.subscriptions.push(vscode.workspace.onDidChangeTextDocument((e) => { if ([...agreedOf.keys()].includes(e.document.uri.fsPath) || e.document.uri.scheme === SCHEME) refreshAgreed(); }),
+    vscode.window.onDidChangeVisibleTextEditors(refreshAgreed), AGREED,
+    vscode.commands.registerCommand('duoDiffEdit.stageAgreed', (file, lines) => {
+      const f = typeof file === 'string' ? file : (diffOf(vscode.window.activeTextEditor) || {}).modified?.fsPath;
+      return f ? stageAgreed(f, lines).catch(fail) : undefined;
+    }));
+  gitApi().then((api) => {
+    const watch = (r) => ctx.subscriptions.push(r.state.onDidChange(refreshAgreed));
+    api.repositories.forEach(watch);
+    ctx.subscriptions.push(api.onDidOpenRepository(watch));
+  }, () => {});
   const mailbox = box.location();
   let refused;
   try { refused = box.prepare(mailbox); } catch (e) { refused = String(e); }

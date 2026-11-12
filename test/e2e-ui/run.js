@@ -6,6 +6,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 const out = process.env.DUO_E2E_RESULT;
 const file = process.env.DUO_E2E_FILE;   // the user's file, in the opened folder
@@ -211,6 +212,36 @@ exports.run = async () => {
     await vscode.commands.executeCommand('duoDiffEdit.undo');
     check(await until(() => left.lineAt(2).text === 'end', 3000) && right.lineAt(2).text === 'END', 'Undo on the right: then the copy, as in one editor');
     await right.save();
+
+    // agreed, unstaged lines: alike on both sides, not yet in the git index; Stage puts only those into the index
+    const repoDir = path.dirname(file), gitc = (...a) => execFileSync('git', ['-C', repoDir, ...a], { encoding: 'utf8' });
+    const setRight = async (text) => {
+      const e = new vscode.WorkspaceEdit();
+      e.replace(right.uri, new vscode.Range(0, 0, right.lineCount, 0), text);
+      await vscode.workspace.applyEdit(e);
+      await right.save();
+    };
+    await setRight('one\ntwo\nthree\n');
+    fs.writeFileSync(proposal, 'one\ntwo\nthree\n');
+    await until(() => left.getText() === 'one\ntwo\nthree\n', 5000);
+    gitc('add', 'cv.md');
+    await setRight('one\nTWO\nTHREE\n');
+    fs.writeFileSync(proposal, 'one\nTWO\nthree\n');
+    check(await until(() => left.getText() === 'one\nTWO\nthree\n', 5000), 'agreed: the left loads the proposal with the same second line');
+    await cursorOn('right', 0);
+    let stages = [];
+    await until(async () => {
+      const ls = await vscode.commands.executeCommand('vscode.executeCodeLensProvider', right.uri);
+      stages = (ls || []).filter((l) => l.command && l.command.command === 'duoDiffEdit.stageAgreed');
+      return stages.length > 0;
+    }, 10000);
+    check(stages.length === 1 && stages[0].range.start.line === 1,
+      `agreed: one Stage button, over the line alike on both sides and not in the index (${JSON.stringify(stages.map((l) => l.range.start.line))})`);
+    if (stages.length) await vscode.commands.executeCommand(stages[0].command.command, ...stages[0].command.arguments);
+    check(await until(() => gitc('show', ':cv.md') === 'one\nTWO\nthree\n', 5000),
+      `Stage: only the agreed line enters the index, not the one the sides differ in (${JSON.stringify(gitc('show', ':cv.md'))})`);
+    check(fs.readFileSync(saves, 'utf8').includes(` STAGE 2-2 ${file}\n`), 'events: Stage is a line too');
+    check(fs.readFileSync(file, 'utf8') === 'one\nTWO\nTHREE\n', 'Stage: the file on disk stays as it is');
 
     // the keys, as Meld's (Visual Studio Code on a display without a window manager has no key focus to press them)
     const keys = Object.fromEntries(vscode.extensions.getExtension('stutek.duo-diff-edit').packageJSON.contributes.keybindings

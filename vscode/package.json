@@ -67,6 +67,11 @@
         "category": "Duo Diff Edit"
       },
       {
+        "command": "duoDiffEdit.stageAgreed",
+        "title": "Stage Agreed Lines (Both Sides Alike)",
+        "category": "Duo Diff Edit"
+      },
+      {
         "command": "duoDiffEdit.undo",
         "title": "Undo (Copies Included)",
         "category": "Duo Diff Edit"
@@ -157,6 +162,10 @@
         },
         {
           "command": "duoDiffEdit.copyWordsRight",
+          "when": "duoDiffEdit.twoFiles"
+        },
+        {
+          "command": "duoDiffEdit.stageAgreed",
           "when": "duoDiffEdit.twoFiles"
         },
         {

@@ -194,10 +194,9 @@ try:
 
     # the two-file diff, checked from inside Visual Studio Code (test/e2e-ui/run.js): no git, a folder of its own
     if phase('ui'):
-        pair = work / 'pair'
-        pair.mkdir()
+        # a repository, for the agreed, unstaged lines and their Stage button
+        pair = repo('pair', {'cv.md': 'first line\nsecond line\nthird line\nfourth line\nfifth line\n'})
         mine = pair / 'cv.md'
-        mine.write_text('first line\nsecond line\nthird line\nfourth line\nfifth line\n', encoding='utf-8')
         result = work / 'ui-result.txt'
         ui = root / 'test' / 'e2e-ui'
         u = user_dir('user-ui', trust=False)
