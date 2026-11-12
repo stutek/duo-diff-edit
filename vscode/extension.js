@@ -212,6 +212,35 @@ async function atCursor(what, byWord) {
   return { ed, side, a, b, A, B, list: byWord ? words(A, B, list, trim) : list };
 }
 const pos = (p) => new vscode.Position(p[0], p[1]);
+
+// The events file (mailbox.events): what the user did that the disk does not tell
+let eventsFile;
+function emit(what, file) {
+  if (!eventsFile) return;
+  try {
+    if (fs.existsSync(eventsFile) && fs.statSync(eventsFile).size > 1e6) fs.truncateSync(eventsFile);   // a day of events is a few kB
+    fs.appendFileSync(eventsFile, box.eventLine(new Date(), what, file), { mode: 0o600 });
+  } catch (err) { log.warn(`events: ${err}`); }
+}
+
+// The two buttons over the block the cursor is on, in the editor that has the cursor
+function lenses(doc) {
+  const ed = vscode.window.activeTextEditor;
+  if (!ed || ed.document !== doc) return [];
+  const input = diffOf(ed);
+  if (!input) return [];
+  const side = doc.uri.toString() === input.original.toString() ? 'a' : 'b';
+  const other = vscode.workspace.textDocuments.find((d) => d.uri.toString() === (side === 'a' ? input.modified : input.original).toString());
+  if (!other) return [];
+  const [A, B] = side === 'a' ? [doc, other] : [other, doc];
+  const list = blocks(A.getText().split(eolOf(A)), B.getText().split(eolOf(B)), vscode.workspace.getConfiguration('diffEditor').get('ignoreTrimWhitespace', true));
+  const line = ed.selection.active.line;
+  return (list ? touched(list, side, line, line) : []).flatMap((k) => {
+    const at = new vscode.Range(Math.min(k[side][0], doc.lineCount - 1), 0, Math.min(k[side][0], doc.lineCount - 1), 0);
+    return [new vscode.CodeLens(at, { title: '→ Accept suggestion (Alt+→)', command: 'duoDiffEdit.copyRight', tooltip: 'Take the proposal\'s block into your file' }),
+      new vscode.CodeLens(at, { title: '← Prefer mine (Alt+←)', command: 'duoDiffEdit.copyLeft', tooltip: 'Put your block into the proposal: the agent prepares a new suggestion or says why its own is better' })];
+  });
+}
 // a selection of whole lines (Shift+↓) ends at the start of the next line, which it does not hold
 const lastLine = (s) => (s.end.line > s.start.line && s.end.character === 0 ? s.end.line - 1 : s.end.line);
 
@@ -232,6 +261,8 @@ async function copy(targetSide, byWord) {
     edit.replace(target.uri, new vscode.Range(pos(r.from), pos(r.to)), r.text);
   }
   if (!(await vscode.workspace.applyEdit(edit))) return void vscode.window.showWarningMessage('Duo Diff Edit: that side cannot be edited.');
+  const lines = hits.map((k) => (byWord ? [k.b[0][0], k.b[1][0]] : [k.b[0], Math.max(k.b[0], k.b[1] - 1)]));   // of the user's file
+  emit(`${targetSide === 'b' ? 'ACCEPT' : 'PREFER'} ${Math.min(...lines.map((l) => l[0])) + 1}-${Math.max(...lines.map((l) => l[1])) + 1}`, b.uri.fsPath);
   copies.push({ source: ed.document.uri.toString(), sourceText: ed.document.getText(), target: target.uri.toString(), after: target.getText() });
   if (copies.length > 50) copies.shift();
   undone.length = 0;
@@ -396,19 +427,22 @@ exports.activate = (ctx) => {
   let eventsRefused;
   try { eventsRefused = box.prepare(eventsDir); } catch (e) { eventsRefused = String(e); }
   if (!eventsRefused) {
-    const saves = path.join(eventsDir, 'saves');
+    eventsFile = path.join(eventsDir, 'saves');
     ctx.subscriptions.push(vscode.workspace.onWillSaveTextDocument((e) => {
       if (e.reason !== vscode.TextDocumentSaveReason.Manual) return;
       const key = e.document.uri.toString();
       const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs)
         .find((x) => twoFiles(x.input) && (x.input.original.toString() === key || x.input.modified.toString() === key));
-      if (!t) return;
-      try {
-        if (fs.existsSync(saves) && fs.statSync(saves).size > 1e6) fs.truncateSync(saves);   // a day of saves is a few kB
-        fs.appendFileSync(saves, box.saveLine(new Date(), t.input.original.toString() === key ? 'left' : 'right', t.input.modified.fsPath), { mode: 0o600 });
-      } catch (err) { log.warn(`events: ${err}`); }
+      if (t) emit(`SAVE manual ${t.input.original.toString() === key ? 'left' : 'right'}`, t.input.modified.fsPath);
     }));
   }
+  // Accept Suggestion and Prefer Mine over the block at the cursor (a CodeLens: the diff's own gutter menu takes no
+  // extension's buttons without a proposed API); diffEditor.codeLens is on by default (package.json)
+  const lensChanged = new vscode.EventEmitter();
+  let lensTimer;
+  const relens = () => { clearTimeout(lensTimer); lensTimer = setTimeout(() => lensChanged.fire(), 150); };
+  ctx.subscriptions.push(lensChanged, vscode.window.onDidChangeTextEditorSelection(relens), vscode.window.onDidChangeActiveTextEditor(relens),
+    vscode.languages.registerCodeLensProvider([{ scheme: 'file' }, { scheme: SCHEME }], { onDidChangeCodeLenses: lensChanged.event, provideCodeLenses: lenses }));
   const mailbox = box.location();
   let refused;
   try { refused = box.prepare(mailbox); } catch (e) { refused = String(e); }

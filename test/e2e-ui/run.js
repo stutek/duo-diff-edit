@@ -171,8 +171,18 @@ exports.run = async () => {
     fs.writeFileSync(proposal, 'P ONE\nP TWO\nend\n');
     check(await until(() => left.getText() === 'P ONE\nP TWO\nend\n', 5000), 'left: loads the next proposal');
     ed = await cursorOn('right', 1);
+    check(vscode.workspace.getConfiguration('diffEditor').get('codeLens') === true, 'lenses: on in diffs by default (configurationDefaults)');
+    let titles = [];
+    await until(async () => {
+      const ls = await vscode.commands.executeCommand('vscode.executeCodeLensProvider', right.uri);
+      titles = (ls || []).filter((l) => l.command && l.range.start.line === 1).map((l) => l.command.title);
+      return titles.some((x) => x.includes('Accept suggestion')) && titles.some((x) => x.includes('Prefer mine'));
+    }, 3000);
+    check(titles.some((x) => x.includes('Accept suggestion')) && titles.some((x) => x.includes('Prefer mine')),
+      `lenses: Accept suggestion and Prefer mine over the block at the cursor (${JSON.stringify(titles)})`);
     await vscode.commands.executeCommand('duoDiffEdit.copyRight');
     check(await until(() => right.getText() === 'p one\nP TWO\nend\n', 3000), `Copy Block Right: of two changed lines one below the other, only the cursor's (${JSON.stringify(right.getText())})`);
+    check(fs.readFileSync(saves, 'utf8').includes(` ACCEPT 2-2 ${file}\n`), 'events: Accept Suggestion is a line with the lines of the user\'s file');
     ed.selection = new vscode.Selection(0, 0, 1, 0);
     await vscode.commands.executeCommand('duoDiffEdit.copyRight');
     check(await until(() => right.getText() === 'P ONE\nP TWO\nend\n', 3000), 'Copy Block Right: a whole-line selection takes that line');
@@ -185,6 +195,7 @@ exports.run = async () => {
     ed = await cursorOn('right', 2);
     await vscode.commands.executeCommand('duoDiffEdit.copyLeft');
     check(await until(() => left.lineAt(2).text === 'END', 3000), 'Copy Block Left: before the undo');
+    check(fs.readFileSync(saves, 'utf8').includes(` PREFER 3-3 ${file}\n`), 'events: Prefer Mine is a line, so the agent rethinks the block');
     ed = await cursorOn('right', 2);
     await vscode.commands.executeCommand('duoDiffEdit.undo');
     check(await until(() => left.lineAt(2).text === 'end', 3000) && right.lineAt(2).text === 'END',

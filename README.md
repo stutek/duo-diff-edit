@@ -11,12 +11,14 @@ Write a file together with an AI agent without the agent ever touching your file
 
 The diff shows **the agent's proposal on the left** and **your file on the right**, as in [Meld](https://meldmerge.org/), and both sides are editable. The agent writes only its proposal, a private copy; the left side updates the moment it does, without a reload prompt. You move blocks across either way:
 
-| To                                             | Mouse                                   | Keys (macOS)                           |
-|------------------------------------------------|-----------------------------------------|----------------------------------------|
-| take a proposal (left → right)                 | gutter arrow →, or **→** in the title   | Alt+→ (Ctrl+Alt+→)                     |
-| put your text into the proposal (right → left) | **←** in the title, or the context menu | Alt+← (Ctrl+Alt+←)                     |
-| go to the next or previous block               | ↑ ↓ in the title                        | Alt+↓ Alt+↑ (Ctrl+Alt+↓ ↑)             |
-| the same, word by word, inside a line too      | Command Palette: *Duo Diff Edit*        | Shift+Alt+arrow (Ctrl+Shift+Alt+arrow) |
+| To                                                                                    | Mouse                                                                         | Keys (macOS)                           |
+|---------------------------------------------------------------------------------------|-------------------------------------------------------------------------------|----------------------------------------|
+| take a proposal (left → right)                                                        | **→ Accept suggestion** over the block, gutter arrow →, or **→** in the title | Alt+→ (Ctrl+Alt+→)                     |
+| prefer your text: it goes into the proposal, and the agent rethinks it (right → left) | **← Prefer mine** over the block, **←** in the title, or the context menu     | Alt+← (Ctrl+Alt+←)                     |
+| go to the next or previous block                                                      | ↑ ↓ in the title                                                              | Alt+↓ Alt+↑ (Ctrl+Alt+↓ ↑)             |
+| the same, word by word, inside a line too                                             | Command Palette: *Duo Diff Edit*                                              | Shift+Alt+arrow (Ctrl+Shift+Alt+arrow) |
+
+The two buttons over the block at the cursor are CodeLenses; the extension turns `diffEditor.codeLens` on, so other extensions' CodeLenses show in diffs too (turn it off in Settings to have neither). The gutter menu's own **Revert Block** is Visual Studio Code's and keeps its name.
 
 The keys are Meld's. A block is every changed block the cursor or selection touches, by the same rule as the built-in arrow, with one difference: changed lines with as many lines on both sides (a paragraph per line, each changed on its own) are a block each, so they move one at a time, where the built-in arrow takes them together. Word by word, it is every changed word or phrase the cursor or selection touches, and going to one selects it, so the next copy takes just that. Going moves on the side the cursor is on. Undo and Redo work as in one editor, copies included: on the side a copy went to it is one step of that side's Undo; on the side it came from, Ctrl+Z (⌘Z) undoes it once your later edits there are undone, and Ctrl+Shift+Z or Ctrl+Y (⇧⌘Z) brings it back. Nothing reaches your file behind your back: every change on the right is yours to save and commit. The buttons and keys work in any diff of two files, `code --diff a b` too; in that diff they take the place of Visual Studio Code's Move Line (Alt+↑ ↓), Expand and Shrink Selection (Shift+Alt+← →) and Add Cursor Above and Below (Shift+Alt+↑ ↓ on Linux). Ctrl+arrows stay for moving by word and scrolling.
 
@@ -60,7 +62,7 @@ Write a file with any name into `<dir>/duo-diff-edit/`, where `<dir>` is `$XDG_R
 
 The window whose workspace holds the path takes the request and deletes it; for `git` the repository must be open in its Source Control. If no window has the project open, the focused window takes a `pair` or `saved` request after 1.5 s; for `git` it opens the repository's folder in a new window, and that window takes it. A request older than 60 s is dropped, so reloading a window never replays old clicks. What the extension did is in **Output → Duo Diff Edit**.
 
-Each save you make with Ctrl+S on a side of a diff of two files (not those of `files.autoSave`) is a line `<ISO time> SAVE manual left|right <your file>` in `<dir>/duo-diff-edit-events/saves`, so an agent can review the moment you say you are done.
+What you do that the files do not tell is a line in `<dir>/duo-diff-edit-events/saves`, so an agent can act on it at once: `<ISO time> SAVE manual left|right <your file>` for a save with Ctrl+S (not those of `files.autoSave`), `<ISO time> ACCEPT <first>-<last> <your file>` and `<ISO time> PREFER <first>-<last> <your file>` for Accept Suggestion and Prefer Mine, with the lines of your file.
 
 What the mailbox trusts and refuses: [SECURITY.md](SECURITY.md).
 

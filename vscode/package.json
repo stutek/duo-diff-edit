@@ -32,6 +32,9 @@
     "virtualWorkspaces": false
   },
   "contributes": {
+    "configurationDefaults": {
+      "diffEditor.codeLens": true
+    },
     "commands": [
       {
         "command": "duoDiffEdit.openPair",
@@ -43,24 +46,24 @@
       },
       {
         "command": "duoDiffEdit.copyLeft",
-        "title": "Copy Block Left",
+        "title": "Prefer Mine (Copy Block Left)",
         "category": "Duo Diff Edit",
         "icon": "$(arrow-left)"
       },
       {
         "command": "duoDiffEdit.copyRight",
-        "title": "Copy Block Right",
+        "title": "Accept Suggestion (Copy Block Right)",
         "category": "Duo Diff Edit",
         "icon": "$(arrow-right)"
       },
       {
         "command": "duoDiffEdit.copyWordsLeft",
-        "title": "Copy Changed Words Left",
+        "title": "Prefer My Words (Copy Changed Words Left)",
         "category": "Duo Diff Edit"
       },
       {
         "command": "duoDiffEdit.copyWordsRight",
-        "title": "Copy Changed Words Right",
+        "title": "Accept Suggested Words (Copy Changed Words Right)",
         "category": "Duo Diff Edit"
       },
       {
