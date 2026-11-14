@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:   # a run GitHub leaves queued without jobs can be neither cancelled nor rerun: start a new one
 permissions:
   contents: read
 jobs:
