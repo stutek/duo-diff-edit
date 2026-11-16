@@ -144,6 +144,14 @@ exports.run = async () => {
     let ed = await cursorOn('right', 0);
     await vscode.commands.executeCommand('duoDiffEdit.nextWords');
     check(sel(ed) === '0,6,0,10', `Next Changed Words: selects the first changed word on the right (${sel(ed)})`);
+    const api = vscode.extensions.getExtension('stutek.duo-diff-edit').exports;
+    const m = api && api.mirrored();
+    check(m && m.uri === left.uri.toString() && m.range.join(',') === '0,6,0,10',
+      `Next Changed Words: the same word is also shown on the left (${m && m.range})`);
+    check(vscode.window.activeTextEditor === ed && sel(ed) === '0,6,0,10', 'Next Changed Words: the focus and selection stay on the right');
+    ed.selection = new vscode.Selection(1, 0, 1, 0);
+    check(await until(() => !api.mirrored(), 2000), 'Next Changed Words: the left shows nothing once the selection leaves the word');
+    ed.selection = new vscode.Selection(0, 6, 0, 10);
     await vscode.commands.executeCommand('duoDiffEdit.copyWordsLeft');
     check(await until(() => left.lineAt(0).text === 'alpha BETA gamma delta', 3000), 'Copy Changed Words Left: only that word goes to the left');
     await vscode.commands.executeCommand('duoDiffEdit.nextWords');

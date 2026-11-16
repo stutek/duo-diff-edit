@@ -316,16 +316,53 @@ async function redo() {
 // Past the last one it goes round to the first, as the diff's own Next Change does.
 async function go(dir, byWord) {
   const c = await atCursor('go', byWord);
+  clearMirror();
   if (!c || !c.list.length) return c && vscode.window.setStatusBarMessage('Duo Diff Edit: no difference', 3000);
   const { ed, side, list } = c;
   const ranges = list.map((k) => (byWord ? k[side] : [[k[side][0], 0], [k[side][0], 0]]))
     .map(([p, q]) => new vscode.Range(ed.document.validatePosition(pos(p)), ed.document.validatePosition(pos(q))));
   const at = ed.selection.active;
-  const r = dir > 0 ? ranges.find((x) => (byWord ? x.start.isAfter(at) : x.start.line > at.line)) || ranges[0]
-    : [...ranges].reverse().find((x) => (byWord ? x.start.isBefore(ed.selection.start) : x.start.line < at.line)) || ranges[ranges.length - 1];
+  const i = dir > 0 ? ranges.findIndex((x) => (byWord ? x.start.isAfter(at) : x.start.line > at.line))
+    : ranges.map((x) => (byWord ? x.start.isBefore(ed.selection.start) : x.start.line < at.line)).lastIndexOf(true);
+  const n = i >= 0 ? i : dir > 0 ? 0 : ranges.length - 1;
+  const r = ranges[n];
   ed.selection = new vscode.Selection(r.start, r.end);
   ed.revealRange(r, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+  if (byWord) mirror(c, list[n], r);
 }
+
+// The change the cursor went to, also on the other side of the diff (the same pairing as Copy Changed Words: the
+// word diff's range on that side): a decoration, not a selection, so the focus, the selection there and Copy stay
+// as they are; the other editor scrolls to it. It goes at the next move, at an edit of either side, or when the
+// selection leaves the change. A change that is only an insertion there shows as a bar at the place it would go.
+const MIRROR = vscode.window.createTextEditorDecorationType({
+  backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
+  border: '1px solid', borderColor: new vscode.ThemeColor('editor.findMatchBorder'),
+  overviewRulerColor: new vscode.ThemeColor('editorOverviewRuler.findMatchForeground'), overviewRulerLane: vscode.OverviewRulerLane.Center,
+});
+const MIRROR_POINT = vscode.window.createTextEditorDecorationType({
+  before: { contentText: '', width: '3px', height: '1.2em', backgroundColor: new vscode.ThemeColor('editorCursor.foreground'), margin: '0 -1px 0 0' },
+});
+let shown;   // { source, target, range, mine } while a change is shown on the other side
+function clearMirror() {
+  if (!shown) return;
+  shown.target.setDecorations(MIRROR, []);
+  shown.target.setDecorations(MIRROR_POINT, []);
+  shown = undefined;
+}
+function mirror({ ed, side, a, b }, w, mine) {
+  const other = side === 'a' ? b : a;
+  const target = vscode.window.visibleTextEditors.find((t) => t.document.uri.toString() === other.uri.toString());
+  if (!target) return;
+  const [p, q] = w[side === 'a' ? 'b' : 'a'].map((x) => other.validatePosition(pos(x)));
+  const range = new vscode.Range(p, q);
+  target.setDecorations(MIRROR, range.isEmpty ? [] : [range]);
+  target.setDecorations(MIRROR_POINT, range.isEmpty ? [range] : []);
+  target.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+  shown = { source: ed, target, range, mine };
+  log.info(`go: shows ${other.uri.path} ${range.start.line}:${range.start.character}-${range.end.line}:${range.end.character}`);
+}
+const mirrored = () => shown && { uri: shown.target.document.uri.toString(), range: [shown.range.start.line, shown.range.start.character, shown.range.end.line, shown.range.end.character] };
 
 async function newWindow() {   // empty auxiliary window; its group is the last one (main window first, then auxiliary)
   const n = vscode.window.tabGroups.all.length;
@@ -456,6 +493,11 @@ async function handle([kind, file]) {   // a parsed request: a file in this wind
 }
 
 exports.activate = (ctx) => {
+  ctx.subscriptions.push(MIRROR, MIRROR_POINT, vscode.window.onDidChangeTextEditorSelection((e) => {   // the selection left the change
+    if (shown && e.textEditor === shown.source && !shown.mine.contains(e.selections[0])) clearMirror();
+  }), vscode.workspace.onDidChangeTextDocument((e) => {
+    if (shown && e.contentChanges.length && (e.document === shown.source.document || e.document === shown.target.document)) clearMirror();
+  }));
   storage = ctx.globalStorageUri.fsPath;
   log = vscode.window.createOutputChannel('Duo Diff Edit', { log: true });
   ctx.subscriptions.push(log);
@@ -585,4 +627,5 @@ exports.activate = (ctx) => {
   fs.watchFile(mailbox, { interval: 500 }, read);
   ctx.subscriptions.push({ dispose: () => fs.unwatchFile(mailbox) }, { dispose: () => { for (const stop of rights.values()) stop(); rights.clear(); } });
   read();
+  return { mirrored };   // for test/e2e-ui: what is shown on the other side of the diff
 };

@@ -84,6 +84,15 @@ test('words: one changed word in a line is a change of its own, a changed phrase
   assert.equal(copyWords(b.join('\n'), a.join('\n'), [list[1]], 'a'), 'alpha beta gamma DELTA');
 });
 
+test('words: the range on the other side (what Next Changed Words shows there) is the word, or the empty place of an insertion', () => {
+  const a = ['one two three'], b = ['one three'];
+  const [w] = words(a, b, blocks(a, b));
+  assert.deepEqual(w.a, [[0, 4], [0, 8]]);   // selected on the left: "two "
+  assert.deepEqual(w.b, [[0, 4], [0, 4]]);   // the right: empty, at the place it would go
+  const [v] = words(['a b c'], ['a B c'], blocks(['a b c'], ['a B c']));
+  assert.deepEqual([v.a, v.b], [[[0, 2], [0, 3]], [[0, 2], [0, 3]]]);
+});
+
 test('words: added or removed lines are one whole change; a cursor at either end of a change touches it', () => {
   const a = ['x', 'z'], b = ['x', 'y', 'z'];
   const [w] = words(a, b, blocks(a, b));
