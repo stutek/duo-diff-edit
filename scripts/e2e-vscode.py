@@ -116,11 +116,8 @@ def start(u, folder, extra=(), environ=None):
     # CI: GitHub's Ubuntu images forbid the unprivileged user namespaces Electron's sandbox needs (AppArmor), so a
     # Visual Studio Code unpacked from a tarball may exit at start; the runner is a throwaway machine, so no sandbox there
     sandbox = ['--no-sandbox'] if os.environ.get('CI') else []
-    # A bare X server has no window manager, so on a runner no window ever gets focus (the orphan checks need the
-    # focused window); with openbox installed it runs beside the window and focuses it. Same process group: stop() ends it.
-    wm = ['sh', '-c', 'openbox >/dev/null 2>&1 & exec "$0" "$@"'] if shutil.which('openbox') else []
     with open(u / 'code.err', 'ab') as err:   # kept for the failure report
-        p = subprocess.Popen(['xvfb-run', '-a', '-s', '-screen 0 1920x1080x24', *wm, args.code, '--user-data-dir', str(u),
+        p = subprocess.Popen(['xvfb-run', '-a', '-s', '-screen 0 1920x1080x24', args.code, '--user-data-dir', str(u),
                               '--extensions-dir', str(ext_dir), '--disable-gpu', *sandbox, '--wait', *extra, '--new-window', str(folder)],
                              env=environ or env, start_new_session=True, stdout=err, stderr=err)
     return p
@@ -179,6 +176,12 @@ try:
             sys.exit('e2e: the extension did not activate within 90 s; run with --keep and read the logs')
         check(f'mailbox {mailbox}' in logs(u) and 'refused' not in logs(u), 'the mailbox is the private one under XDG_RUNTIME_DIR')
 
+        # The orphan first: only the focused window forwards it, and once a diff opens in the auxiliary window the
+        # main window is no longer focused for Visual Studio Code (on Ubuntu 24.04's Xvfb, with or without a window manager)
+        f = request('4', f'git {other / "c.md"}')
+        check(wait_for(lambda: f'opening {other}' in logs(u), 20), 'orphan: the focused window opens its project folder')
+        check(wait_for(lambda: f'open git {other / "c.md"}' in logs(u), 60), "orphan: the project's new window opens it")
+
         f = request('1', f'git {proj / "a.md"}')
         check(wait_for(lambda: f'open git {proj / "a.md"}' in logs(u), 20) and not f.exists(), 'own request: opened and taken')
         f = request('2', f'git {proj / "new.md"}')
@@ -188,14 +191,6 @@ try:
         f = request('3', f'git {proj / "a.md"}', age=120)
         check(wait_for(lambda: '3: stale' in logs(u), 20) and not f.exists(), 'stale request: dropped')
         check(logs(u).count(f'open git {proj / "a.md"}') == 1, 'stale request: not opened')
-
-        f = request('4', f'git {other / "c.md"}')
-        forwarded = wait_for(lambda: f'opening {other}' in logs(u), 20)
-        if not forwarded and 'opening' not in logs(u):
-            print('note  the window never reported focus on this display; the orphan test needs a focused window'
-                  f' (window manager: {shutil.which("openbox") or "none, install openbox"})\n{logs(u)[-2000:]}')
-        check(forwarded, 'orphan: the focused window opens its project folder')
-        check(wait_for(lambda: f'open git {other / "c.md"}' in logs(u), 60), "orphan: the project's new window opens it")
         check(wait_for(lambda: not any(mailbox.iterdir()), 10), 'mailbox empty at the end')
         check('[error]' not in logs(u), 'no error in the extension log of any window (a request taken, then failed)')
         for p in procs:

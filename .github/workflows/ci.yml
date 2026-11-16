@@ -45,6 +45,6 @@ jobs:
           curl -fsSL -o "$RUNNER_TEMP/vscode.tar.gz" https://update.code.visualstudio.com/latest/linux-x64/stable
           mkdir "$RUNNER_TEMP/vscode"
           tar -xzf "$RUNNER_TEMP/vscode.tar.gz" -C "$RUNNER_TEMP/vscode" --strip-components=1
-          sudo apt-get update -q && sudo apt-get install -yq xvfb openbox
+          sudo apt-get update -q && sudo apt-get install -yq xvfb
       - run: python scripts/build-vsix.py
       - run: python scripts/e2e-vscode.py --code "$RUNNER_TEMP/vscode/bin/code"

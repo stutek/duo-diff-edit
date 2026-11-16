@@ -1,0 +1,7 @@
+#!/bin/sh
+# Before a push: the Linux jobs of CI on every commit that goes out (scripts/ci-local.py, in a container).
+# On with: git config core.hooksPath .githooks     Skip once: git push --no-verify
+zero=0000000000000000000000000000000000000000
+while read -r _ sha _ _; do
+  [ "$sha" = "$zero" ] || python3 scripts/ci-local.py "$sha" || exit 1
+done

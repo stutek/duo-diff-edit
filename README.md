@@ -100,7 +100,11 @@ python3 scripts/check.py         # every check: versions, syntax, unit tests, bu
 python3 scripts/check.py --e2e   # also the extension in a real Visual Studio Code on a virtual display (Linux, xvfb-run);
                                  # CODE=<path to code> picks the Visual Studio Code, e.g. one unpacked from a .tar.gz
 python3 scripts/build-vsix.py    # only the package: dist/duo-diff-edit-<version>.vsix and its .sha256
+python3 scripts/ci-local.py      # the Linux jobs of CI on HEAD, in a Docker container like GitHub's runner
+git config core.hooksPath .githooks   # once: the pre-push hook runs ci-local.py on every commit that goes out
 ```
+
+The end-to-end test can pass on your desktop and fail on GitHub's runner (there the main window loses focus once an auxiliary window opens); `ci-local.py` runs it on Ubuntu 24.04 as the runner does. Tested on Linux with rootless Docker.
 
 GitHub Actions runs the checks on Linux, macOS and Windows for every push, and the end-to-end test on Linux ([ci.yml](.github/workflows/ci.yml)). A tag `v<version>` publishes the release ([release.yml](.github/workflows/release.yml)).
 
