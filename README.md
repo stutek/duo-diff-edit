@@ -41,7 +41,7 @@ The skill is plain shell, so any agent that can run commands can follow it.
 
 1. **Extension:** download `duo-diff-edit-<version>.vsix` from [Releases](https://github.com/stutek/duo-diff-edit/releases) and install it:
    ```bash
-   code --install-extension duo-diff-edit-0.1.0.vsix
+   code --install-extension duo-diff-edit-0.2.0.vsix
    ```
 2. **Plugin for Claude Code:**
    ```bash

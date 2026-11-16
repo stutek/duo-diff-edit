@@ -3,7 +3,7 @@
   "publisher": "stutek",
   "displayName": "Duo Diff Edit",
   "description": "Write together with an AI agent, as in Meld: the agent's proposal on the left, your file on the right, blocks copied across either way.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "repository": {
     "type": "git",
