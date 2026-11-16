@@ -126,7 +126,7 @@ test('decide: own, being written, young orphan, leave, drop, rest', () => {
 });
 
 test('decide: an orphan is forwarded to its repository, opened here when no git runs, else refused', () => {
-  const d = fs.realpathSync(tmp());
+  const d = fs.realpathSync.native(tmp());   // the long name; a Windows runner's temp directory is C:\Users\RUNNER~1\…
   fs.mkdirSync(path.join(d, 'repo', '.git'), { recursive: true });
   fs.mkdirSync(path.join(d, 'plain'));
   const base = { name: '1', roots, focused: true, age: 2000, home: path.join(d, 'home') };

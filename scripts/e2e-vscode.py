@@ -113,9 +113,13 @@ def logs(u):   # every window's log of the extension, joined
 
 def start(u, folder, extra=(), environ=None):
     # --wait keeps the CLI (and so xvfb-run's display) alive while the window is open
-    p = subprocess.Popen(['xvfb-run', '-a', '-s', '-screen 0 1920x1080x24', args.code, '--user-data-dir', str(u),
-                          '--extensions-dir', str(ext_dir), '--disable-gpu', '--wait', *extra, '--new-window', str(folder)],
-                         env=environ or env, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # CI: GitHub's Ubuntu images forbid the unprivileged user namespaces Electron's sandbox needs (AppArmor), so a
+    # Visual Studio Code unpacked from a tarball may exit at start; the runner is a throwaway machine, so no sandbox there
+    sandbox = ['--no-sandbox'] if os.environ.get('CI') else []
+    with open(u / 'code.err', 'ab') as err:   # kept for the failure report
+        p = subprocess.Popen(['xvfb-run', '-a', '-s', '-screen 0 1920x1080x24', args.code, '--user-data-dir', str(u),
+                              '--extensions-dir', str(ext_dir), '--disable-gpu', *sandbox, '--wait', *extra, '--new-window', str(folder)],
+                             env=environ or env, start_new_session=True, stdout=err, stderr=err)
     return p
 
 
@@ -167,6 +171,8 @@ try:
             if 'EMFILE' in main:
                 sys.exit('e2e: Visual Studio Code could not start: no inotify instance left (EMFILE). Raise the limit:\n'
                          '  sudo sysctl -w fs.inotify.max_user_instances=1024')
+            print(f'--- main.log ---\n{main[-3000:]}\n--- stderr of code ---\n'
+                  f'{(u / "code.err").read_text(errors="replace")[-3000:]}')
             sys.exit('e2e: the extension did not activate within 90 s; run with --keep and read the logs')
         check(f'mailbox {mailbox}' in logs(u) and 'refused' not in logs(u), 'the mailbox is the private one under XDG_RUNTIME_DIR')
 

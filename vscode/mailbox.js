@@ -71,7 +71,7 @@ function readRequest(f, now = Date.now()) {
 
 const toPath = (p, win = WIN) => {   // Git Bash writes /c/Users/…; on Windows that is C:/Users/…
   const m = win && /^\/([a-zA-Z])\/(.*)$/.exec(p);
-  return path.resolve(m ? `${m[1]}:/${m[2]}` : p);
+  return path.resolve(m ? `${m[1].toUpperCase()}:/${m[2]}` : p);
 };
 // [kind, absolute path] or null; control characters never reach a path
 const parse = (line) => {
