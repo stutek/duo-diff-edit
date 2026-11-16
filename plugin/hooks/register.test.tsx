@@ -13,6 +13,10 @@ const M = (role: 'user' | 'assistant', text: string, toolResult = false) =>
 type On = Parameters<Parameters<typeof test>[1]>[1]
 type Engine = Parameters<Parameters<typeof test>[1]>[0]
 
+// The test engine resolves a path on the host: on Windows /home/me/a.md arrives as D:\home\me\a.md. The test files
+// are POSIX, so the mocks below compare and record the path the mod wrote (drive and backslashes taken off).
+const posix = (p: string) => p.replace(/^[A-Za-z]:(?=[\\/])/, '').replace(/\\/g, '/')
+
 // The world beneath the mod: env, existing files, the mailbox (a written request stays until a window takes it).
 const setup = (on: On, env: Record<string, string>, exists: string[], messages: () => unknown[]) => {
   const w = { written: [] as { path: string, text: string }[], present: new Set<string>(), toasts: [] as string[], prompts: [] as string[] }
@@ -24,17 +28,17 @@ const setup = (on: On, env: Record<string, string>, exists: string[], messages: 
   on('session.root', () => ({ value: '/home/me/project' }))
   on('env.get', (_, e) => ({ value: env[(e as { name: string }).name] }))
   on('fs.stat', (_, e) => {
-    if (!exists.includes((e as { path: string }).path)) throw new Error('ENOENT')
+    if (!exists.includes(posix((e as { path: string }).path))) throw new Error('ENOENT')
     return { value: { kind: 'file', size: 1, mtimeMs: 1, isLink: false } }
   })
   on('fs.write', (_, e) => {
-    const x = e as { path: string, text: string }
+    const x = { ...(e as { path: string, text: string }), path: posix((e as { path: string }).path) }
     w.written.push(x)
     w.present.add(x.path)
     return { value: undefined }
   })
   on('fs.exists', (_, e) => {
-    const p = (e as { path: string }).path
+    const p = posix((e as { path: string }).path)
     return { value: w.present.has(p) || exists.includes(p) }
   })
   on('ui.toast', (_, e) => {

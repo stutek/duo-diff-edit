@@ -116,8 +116,11 @@ def start(u, folder, extra=(), environ=None):
     # CI: GitHub's Ubuntu images forbid the unprivileged user namespaces Electron's sandbox needs (AppArmor), so a
     # Visual Studio Code unpacked from a tarball may exit at start; the runner is a throwaway machine, so no sandbox there
     sandbox = ['--no-sandbox'] if os.environ.get('CI') else []
+    # A bare X server has no window manager, so on a runner no window ever gets focus (the orphan checks need the
+    # focused window); with openbox installed it runs beside the window and focuses it. Same process group: stop() ends it.
+    wm = ['sh', '-c', 'openbox >/dev/null 2>&1 & exec "$0" "$@"'] if shutil.which('openbox') else []
     with open(u / 'code.err', 'ab') as err:   # kept for the failure report
-        p = subprocess.Popen(['xvfb-run', '-a', '-s', '-screen 0 1920x1080x24', args.code, '--user-data-dir', str(u),
+        p = subprocess.Popen(['xvfb-run', '-a', '-s', '-screen 0 1920x1080x24', *wm, args.code, '--user-data-dir', str(u),
                               '--extensions-dir', str(ext_dir), '--disable-gpu', *sandbox, '--wait', *extra, '--new-window', str(folder)],
                              env=environ or env, start_new_session=True, stdout=err, stderr=err)
     return p
@@ -189,7 +192,8 @@ try:
         f = request('4', f'git {other / "c.md"}')
         forwarded = wait_for(lambda: f'opening {other}' in logs(u), 20)
         if not forwarded and 'opening' not in logs(u):
-            print('note  the window never reported focus on this display; the orphan test needs a focused window')
+            print('note  the window never reported focus on this display; the orphan test needs a focused window'
+                  f' (window manager: {shutil.which("openbox") or "none, install openbox"})\n{logs(u)[-2000:]}')
         check(forwarded, 'orphan: the focused window opens its project folder')
         check(wait_for(lambda: f'open git {other / "c.md"}' in logs(u), 60), "orphan: the project's new window opens it")
         check(wait_for(lambda: not any(mailbox.iterdir()), 10), 'mailbox empty at the end')
