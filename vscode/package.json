@@ -72,6 +72,18 @@
         "category": "Duo Diff Edit"
       },
       {
+        "command": "duoDiffEdit.stageMine",
+        "title": "Stage Mine (Your Change at the Cursor)",
+        "category": "Duo Diff Edit",
+        "icon": "$(add)"
+      },
+      {
+        "command": "duoDiffEdit.stageFile",
+        "title": "Stage File (Your Whole Text)",
+        "category": "Duo Diff Edit",
+        "icon": "$(check-all)"
+      },
+      {
         "command": "duoDiffEdit.undo",
         "title": "Undo (Copies Included)",
         "category": "Duo Diff Edit"
@@ -125,6 +137,11 @@
           "command": "duoDiffEdit.copyRight",
           "when": "duoDiffEdit.twoFiles",
           "group": "navigation@-1"
+        },
+        {
+          "command": "duoDiffEdit.stageFile",
+          "when": "duoDiffEdit.twoFiles && duoDiffEdit.inGit",
+          "group": "navigation@0"
         }
       ],
       "editor/context": [
@@ -137,6 +154,11 @@
           "command": "duoDiffEdit.copyRight",
           "when": "duoDiffEdit.twoFiles && isInDiffEditor",
           "group": "1_modification@2"
+        },
+        {
+          "command": "duoDiffEdit.stageMine",
+          "when": "duoDiffEdit.twoFiles && duoDiffEdit.inGit && isInDiffEditor",
+          "group": "1_modification@3"
         }
       ],
       "commandPalette": [
@@ -167,6 +189,14 @@
         {
           "command": "duoDiffEdit.stageAgreed",
           "when": "duoDiffEdit.twoFiles"
+        },
+        {
+          "command": "duoDiffEdit.stageMine",
+          "when": "duoDiffEdit.twoFiles && duoDiffEdit.inGit"
+        },
+        {
+          "command": "duoDiffEdit.stageFile",
+          "when": "duoDiffEdit.twoFiles && duoDiffEdit.inGit"
         },
         {
           "command": "duoDiffEdit.undo",

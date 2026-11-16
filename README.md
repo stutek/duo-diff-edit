@@ -18,6 +18,10 @@ The diff shows **the agent's proposal on the left** and **your file on the right
 | go to the next or previous block                                                      | ↑ ↓ in the title                                                              | Alt+↓ Alt+↑ (Ctrl+Alt+↓ ↑)             |
 | the same, word by word, inside a line too                                             | Command Palette: *Duo Diff Edit*                                              | Shift+Alt+arrow (Ctrl+Shift+Alt+arrow) |
 
+Visual Studio Code's gutter has only the arrow → (it is the built-in Revert Block, and an extension cannot add a ← there), so ← is the **← Prefer mine** button over the block, the **←** in the title and Alt+←.
+
+For a file in git, **Stage mine** (**+** over the change at the cursor on the right, or the context menu) puts your text of that change into the git index, and **Stage file** (the title) your whole text; the file stays as it is and the proposal is never staged. Neither shows outside git.
+
 The two buttons over the block at the cursor are CodeLenses; the extension turns `diffEditor.codeLens` on, so other extensions' CodeLenses show in diffs too (turn it off in Settings to have neither). The gutter menu's own **Revert Block** is Visual Studio Code's and keeps its name.
 
 When your file is in a git repository, lines that both sides hold alike but the git index does not yet are light blue on the right, each run with a **Stage agreed lines** button over it: it puts just those lines into the index (the file stays as it is), so what you staged is what you and the agent agree on.
@@ -64,7 +68,7 @@ Write a file with any name into `<dir>/duo-diff-edit/`, where `<dir>` is `$XDG_R
 
 The window whose workspace holds the path takes the request and deletes it; for `git` the repository must be open in its Source Control. If no window has the project open, the focused window takes a `pair` or `saved` request after 1.5 s; for `git` it opens the repository's folder in a new window, and that window takes it. A request older than 60 s is dropped, so reloading a window never replays old clicks. What the extension did is in **Output → Duo Diff Edit**.
 
-What you do that the files do not tell is a line in `<dir>/duo-diff-edit-events/saves`, so an agent can act on it at once: `<ISO time> SAVE manual left|right <your file>` for a save with Ctrl+S (not those of `files.autoSave`), `<ISO time> ACCEPT <first>-<last> <your file>` and `<ISO time> PREFER <first>-<last> <your file>` for Accept Suggestion and Prefer Mine, and `<ISO time> STAGE <first>-<last> <your file>` for Stage agreed lines, with the lines of your file.
+What you do that the files do not tell is a line in `<dir>/duo-diff-edit-events/saves`, so an agent can act on it at once: `<ISO time> SAVE manual left|right <your file>` for a save with Ctrl+S (not those of `files.autoSave`), `<ISO time> ACCEPT <first>-<last> <your file>` and `<ISO time> PREFER <first>-<last> <your file>` for Accept Suggestion and Prefer Mine, and `<ISO time> STAGE <first>-<last> <your file>` for Stage agreed lines, Stage mine and Stage file, with the lines of your file.
 
 What the mailbox trusts and refuses: [SECURITY.md](SECURITY.md).
 

@@ -251,6 +251,27 @@ exports.run = async () => {
     check(fs.readFileSync(saves, 'utf8').includes(` STAGE 2-2 ${file}\n`), 'events: Stage is a line too');
     check(fs.readFileSync(file, 'utf8') === 'one\nTWO\nTHREE\n', 'Stage: the file on disk stays as it is');
 
+    // Stage Mine: your text where the sides differ too (the proposal has 'three', you have 'THREE'); never the proposal's
+    const edIdx = await cursorOn('right', 2);
+    let mine = [];
+    await until(async () => {
+      const ls = await vscode.commands.executeCommand('vscode.executeCodeLensProvider', right.uri);
+      mine = (ls || []).filter((l) => l.command && l.command.command === 'duoDiffEdit.stageMine');
+      return mine.length > 0;
+    }, 10000);
+    check(mine.length === 1 && mine[0].range.start.line === 2, `Stage mine: one button over your change at the cursor (${JSON.stringify(mine.map((l) => l.range.start.line))})`);
+    check(edIdx && edIdx.document === right, 'Stage mine: the cursor is on your file');
+    await vscode.commands.executeCommand('duoDiffEdit.stageMine');
+    check(await until(() => gitc('show', ':cv.md') === 'one\nTWO\nTHREE\n', 5000),
+      `Stage mine: your text enters the index, not the proposal (${JSON.stringify(gitc('show', ':cv.md'))})`);
+    check(fs.readFileSync(proposal, 'utf8') === 'one\nTWO\nthree\n', 'Stage mine: the proposal is untouched');
+    // Stage File: every change of your file at once
+    await setRight('ONE\nTWO\nTHREE\nfour\n');
+    await cursorOn('right', 0);
+    await vscode.commands.executeCommand('duoDiffEdit.stageFile');
+    check(await until(() => gitc('show', ':cv.md') === 'ONE\nTWO\nTHREE\nfour\n', 5000),
+      `Stage file: the whole of your text enters the index (${JSON.stringify(gitc('show', ':cv.md'))})`);
+
     // the keys, as Meld's (Visual Studio Code on a display without a window manager has no key focus to press them)
     const keys = Object.fromEntries(vscode.extensions.getExtension('stutek.duo-diff-edit').packageJSON.contributes.keybindings
       .map((k) => [k.key, k.command.replace('duoDiffEdit.', '')]));

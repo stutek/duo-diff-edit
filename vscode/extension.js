@@ -245,7 +245,15 @@ function cursorLenses(doc) {
   const [A, B] = side === 'a' ? [doc, other] : [other, doc];
   const list = blocks(A.getText().split(eolOf(A)), B.getText().split(eolOf(B)), vscode.workspace.getConfiguration('diffEditor').get('ignoreTrimWhitespace', true));
   const line = ed.selection.active.line;
-  return (list ? touched(list, side, line, line) : []).flatMap((k) => {
+  // + Stage mine: your text of the change (index → your file) the cursor is on, not only where the two sides differ
+  const g = side === 'b' && agreedOf.get(doc.uri.fsPath);
+  const stage = (g ? touched(blocks(g.I, doc.getText().split(eolOf(doc)), false) || [], 'b', line, line) : []).map((k) => {
+    const at = Math.min(k.b[0], doc.lineCount - 1);
+    return new vscode.CodeLens(new vscode.Range(at, 0, at, 0), { title: '$(add) Stage mine', command: 'duoDiffEdit.stageMine',
+      tooltip: 'Put your text of this change into the git index (the file stays as it is)' });
+  });
+  return [...stage, ...(list ? touched(list, side, line, line) : [])].flatMap((k) => {
+    if (k instanceof vscode.CodeLens) return [k];
     const at = new vscode.Range(Math.min(k[side][0], doc.lineCount - 1), 0, Math.min(k[side][0], doc.lineCount - 1), 0);
     return [new vscode.CodeLens(at, { title: '→ Accept suggestion (Alt+→)', command: 'duoDiffEdit.copyRight', tooltip: 'Take the proposal\'s block into your file' }),
       new vscode.CodeLens(at, { title: '← Prefer mine (Alt+←)', command: 'duoDiffEdit.copyLeft', tooltip: 'Put your block into the proposal: the agent prepares a new suggestion or says why its own is better' })];
@@ -426,21 +434,40 @@ async function agreed(input) {   // the runs of agreed, unstaged lines of one di
   const ok = hunks.filter((k) => (k.b[0] < k.b[1] ? !lines(k).some(inPair) : !inPair(k.b[0])));
   // runs are what shows (lines the right has); removals are staged with Stage All Agreed
   const runs = ok.filter((k) => k.b[0] < k.b[1]).map((k) => [k.b[0], k.b[1] - 1, k]);
-  return { runs, ok, root, rel, bin, index, I, B, eol: index.includes('\r\n') ? '\r\n' : '\n' };
+  return { runs, ok, hunks, root, rel, bin, index, I, B, eol: index.includes('\r\n') ? '\r\n' : '\n' };
 }
+const diffOfFile = (file) => vscode.window.tabGroups.all.flatMap((g) => g.tabs)
+  .find((x) => twoFiles(x.input) && x.input.modified.scheme === 'file' && x.input.modified.fsPath === file);
 async function stageAgreed(file, lines) {   // the agreed hunks on these lines of the right side (all, without lines)
-  const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => twoFiles(x.input) && x.input.modified.scheme === 'file' && x.input.modified.fsPath === file);
+  const t = diffOfFile(file);
   const s = t && await agreed(t.input);
   if (!s) return void vscode.window.showInformationMessage('Duo Diff Edit: nothing to stage here (the file is not in a repository Source Control has open).');
   const pick = lines ? s.runs.filter(([f, l]) => f <= lines[1] && lines[0] <= l).map(([, , k]) => k) : s.ok;
   if (!pick.length) return void vscode.window.setStatusBarMessage('Duo Diff Edit: no agreed, unstaged lines here', 3000);
+  return intoIndex(file, s, pick);
+}
+// Stage Mine: your text, agreed or not, into the git index: the changes (index → your file) the cursor or selection
+// touches, or with whole every change, the whole file. Only the right side is read: the proposal is never staged.
+async function stageMine(file, whole) {
+  const t = diffOfFile(file);
+  const s = t && await agreed(t.input);
+  if (!s) return void vscode.window.showInformationMessage('Duo Diff Edit: nothing to stage here (the file is not in a repository Source Control has open).');
+  let pick = s.hunks;
+  if (!whole) {
+    const ed = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === t.input.modified.toString());
+    pick = ed ? s.hunks.filter((k) => ed.selections.some((x) => touched(s.hunks, 'b', x.start.line, lastLine(x)).includes(k))) : [];
+  }
+  if (!pick.length) return void vscode.window.setStatusBarMessage(`Duo Diff Edit: nothing unstaged ${whole ? 'in the file' : 'at the cursor in your file (the right side)'}`, 3000);
+  return intoIndex(file, s, pick);
+}
+async function intoIndex(file, s, pick) {   // these hunks (index → your file) applied to the index text
   const next = apply(s.index, pick.map((k) => replacement(s.I, s.B, k, 'a', s.eol)), s.eol);
   const mode = ((await git(s.bin, s.root, ['ls-files', '-s', '--', s.rel])).out.split(' ')[0]) || '100644';
   const blob = await git(s.bin, s.root, ['hash-object', '-w', '--stdin'], next);
   if (blob.code || (await git(s.bin, s.root, ['update-index', '--add', '--cacheinfo', `${mode},${blob.out},${s.rel}`])).code) {
     return void vscode.window.showWarningMessage('Duo Diff Edit: git did not stage the lines.');
   }
-  log.info(`staged ${pick.length} agreed hunk(s) of ${file}`);
+  log.info(`staged ${pick.length} hunk(s) of ${file}`);
   emit(`STAGE ${Math.min(...pick.map((k) => k.b[0])) + 1}-${Math.max(...pick.map((k) => Math.max(k.b[0], k.b[1] - 1))) + 1}`, file);
   refreshAgreed();
 }
@@ -456,6 +483,9 @@ function refreshAgreed() {   // the decorations and Stage lenses of every visibl
       agreedOf.set(input.modified.fsPath, s);
       ed.setDecorations(AGREED, s ? s.runs.map(([f, l]) => new vscode.Range(f, 0, l, 0)) : []);
     }
+    const act = diffOf(vscode.window.activeTextEditor) || (vscode.window.tabGroups.activeTabGroup.activeTab || {}).input;
+    const f = act && act.modified && act.modified.scheme === 'file' && act.modified.fsPath;
+    vscode.commands.executeCommand('setContext', 'duoDiffEdit.inGit', !!(f && agreedOf.get(f)));   // Stage buttons only for a file in git
     lensChanged.fire();
   }, 300);
 }
@@ -559,6 +589,15 @@ exports.activate = (ctx) => {
   // agreed, unstaged lines follow both sides, the visible editors and the index (the git extension's state)
   ctx.subscriptions.push(vscode.workspace.onDidChangeTextDocument((e) => { if ([...agreedOf.keys()].includes(e.document.uri.fsPath) || e.document.uri.scheme === SCHEME) refreshAgreed(); }),
     vscode.window.onDidChangeVisibleTextEditors(refreshAgreed), AGREED,
+    vscode.commands.registerCommand('duoDiffEdit.stageMine', () => {
+      const f = (diffOf(vscode.window.activeTextEditor) || {}).modified?.fsPath;
+      return f ? stageMine(f, false).catch(fail) : undefined;
+    }),
+    vscode.commands.registerCommand('duoDiffEdit.stageFile', () => {
+      const t = vscode.window.tabGroups.activeTabGroup.activeTab;
+      const f = ((t && twoFiles(t.input) && t.input) || diffOf(vscode.window.activeTextEditor) || {}).modified?.fsPath;
+      return f ? stageMine(f, true).catch(fail) : undefined;
+    }),
     vscode.commands.registerCommand('duoDiffEdit.stageAgreed', (file, lines) => {
       const f = typeof file === 'string' ? file : (diffOf(vscode.window.activeTextEditor) || {}).modified?.fsPath;
       return f ? stageAgreed(f, lines).catch(fail) : undefined;
