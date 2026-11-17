@@ -3,7 +3,7 @@
   "publisher": "stutek",
   "displayName": "Duo Diff Edit",
   "description": "Write together with an AI agent, as in Meld: the agent's proposal on the left, your file on the right, blocks copied across either way.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -114,6 +114,12 @@
         "category": "Duo Diff Edit"
       }
     ],
+    "submenus": [
+      {
+        "id": "duoDiffEdit.menu",
+        "label": "Duo Diff Edit"
+      }
+    ],
     "menus": {
       "explorer/context": [
         {
@@ -151,20 +157,23 @@
       ],
       "editor/context": [
         {
-          "command": "duoDiffEdit.copyLeft",
+          "submenu": "duoDiffEdit.menu",
           "when": "duoDiffEdit.twoFiles && isInDiffEditor",
-          "group": "1_modification@1"
-        },
-        {
-          "command": "duoDiffEdit.copyRight",
-          "when": "duoDiffEdit.twoFiles && isInDiffEditor",
-          "group": "1_modification@2"
-        },
-        {
-          "command": "duoDiffEdit.stageMine",
-          "when": "duoDiffEdit.twoFiles && duoDiffEdit.inGit && isInDiffEditor",
-          "group": "1_modification@3"
+          "group": "navigation@0"
         }
+      ],
+      "duoDiffEdit.menu": [
+        { "command": "duoDiffEdit.copyRight", "group": "1_copy@1" },
+        { "command": "duoDiffEdit.copyLeft", "group": "1_copy@2" },
+        { "command": "duoDiffEdit.copyWordsRight", "group": "1_copy@3" },
+        { "command": "duoDiffEdit.copyWordsLeft", "group": "1_copy@4" },
+        { "command": "duoDiffEdit.nextBlock", "group": "2_go@1" },
+        { "command": "duoDiffEdit.previousBlock", "group": "2_go@2" },
+        { "command": "duoDiffEdit.nextWords", "group": "2_go@3" },
+        { "command": "duoDiffEdit.previousWords", "group": "2_go@4" },
+        { "command": "duoDiffEdit.stageMine", "when": "duoDiffEdit.inGit", "group": "3_stage@1" },
+        { "command": "duoDiffEdit.stageAgreed", "when": "duoDiffEdit.inGit", "group": "3_stage@2" },
+        { "command": "duoDiffEdit.stageFile", "when": "duoDiffEdit.inGit", "group": "3_stage@3" }
       ],
       "commandPalette": [
         {

@@ -16,9 +16,11 @@ The diff shows **the agent's proposal on the left** and **your file on the right
 | take a proposal (left → right)                                                        | **→ Accept suggestion** over the block, gutter arrow →, or **→** in the title | Alt+→ (Ctrl+Alt+→)                     |
 | prefer your text: it goes into the proposal, and the agent rethinks it (right → left) | **← Prefer mine** over the block, **←** in the title, or the context menu     | Alt+← (Ctrl+Alt+←)                     |
 | go to the next or previous block                                                      | ↑ ↓ in the title                                                              | Alt+↓ Alt+↑ (Ctrl+Alt+↓ ↑)             |
-| the same, word by word, inside a line too                                             | Command Palette: *Duo Diff Edit*                                              | Shift+Alt+arrow (Ctrl+Shift+Alt+arrow) |
+| the same, word by word, inside a line too                                             | **Duo Diff Edit** in the context menu, or the Command Palette                 | Shift+Alt+arrow (Ctrl+Shift+Alt+arrow) |
 
 Visual Studio Code's gutter has only the arrow → (it is the built-in Revert Block, and an extension cannot add a ← there), so ← is the **← Prefer mine** button over the block, the **←** in the title and Alt+←.
+
+Right-click in the diff: the submenu **Duo Diff Edit**, first in the menu, holds every command of the diff: copy blocks and words, go to the next or previous one, stage. Other extensions' items stay below it: an extension cannot remove them, and an editor of its own (a webview), which could, is no text editor, so Claude Code would no longer see the lines you select there.
 
 For a file in git, **Stage mine** (**+** over the change at the cursor on the right) puts your text of that change into the git index, **Stage Selected Lines** (the title or the context menu) your text of every change the cursor or selection touches, and **Stage file** (the title) your whole text; the file stays as it is and the proposal is never staged. Neither shows outside git.
 

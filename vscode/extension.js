@@ -598,9 +598,9 @@ exports.activate = (ctx) => {
       const f = ((t && twoFiles(t.input) && t.input) || diffOf(vscode.window.activeTextEditor) || {}).modified?.fsPath;
       return f ? stageMine(f, true).catch(fail) : undefined;
     }),
-    vscode.commands.registerCommand('duoDiffEdit.stageAgreed', (file, lines) => {
+    vscode.commands.registerCommand('duoDiffEdit.stageAgreed', (file, lines) => {   // from a menu: (uri, context), all agreed lines
       const f = typeof file === 'string' ? file : (diffOf(vscode.window.activeTextEditor) || {}).modified?.fsPath;
-      return f ? stageAgreed(f, lines).catch(fail) : undefined;
+      return f ? stageAgreed(f, Array.isArray(lines) ? lines : undefined).catch(fail) : undefined;
     }));
   gitApi().then((api) => {
     const watch = (r) => ctx.subscriptions.push(r.state.onDidChange(refreshAgreed));

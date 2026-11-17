@@ -53,7 +53,7 @@ Recorded 2026-11-16 10:44:42.629834988. Open; nothing in the code is changed yet
 
 ## Design: an own context menu in the diff instead of git's and the other extensions'
 
-Recorded 2026-11-17 10:46:39.747151832. Open: the owner's decision. Blocks nothing: 0.2.1 already puts **Stage Selected Lines** beside git's **Stage Selected Ranges**, which stages nothing in a diff of two files.
+Recorded 2026-11-17 10:46:39.747151832. Decided 2026-11-17 11:19:58.497582444: the owner asked for an own menu with only the actions that make sense and, verbatim, »naj ne ustavi ampak izvede, da ne bo izgub« ("do not stop, carry it out, so that nothing is lost"); without losses only (c) is possible, built in 0.2.2 as the submenu **Duo Diff Edit**, first in the context menu. Measured besides: an own URI scheme removes 6 items only (those that ask for `resourceScheme == file`: git's two, ChatGPT, npm, Open in Browser's two); Copilot, GitLens, Markdown PDF and the others stay. Remove this item once 0.2.2 is released.
 
 **Request** (the owner's words, 2026-11-17, verbatim): »lahko v najinem editorju odregistrirava GIT in mnoge druge in imava svoj rclick meni?« ("can we unregister git and many others in our editor and have our own right-click menu?")
 

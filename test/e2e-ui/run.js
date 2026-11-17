@@ -270,8 +270,12 @@ exports.run = async () => {
     await setRight('ONE\nTWO\nTHREE\nfour\n');
     const edSel = await cursorOn('right', 0);
     const menus = vscode.extensions.getExtension('stutek.duo-diff-edit').packageJSON.contributes.menus;
-    check(['editor/title', 'editor/context'].every((m) => menus[m].some((x) => x.command === 'duoDiffEdit.stageMine')),
-      'Stage Selected Lines: in the title and the context menu, beside git\'s Stage Selected Ranges');
+    const own = (menus['duoDiffEdit.menu'] || []).map((x) => x.command.replace('duoDiffEdit.', ''));
+    check(menus['editor/title'].some((x) => x.command === 'duoDiffEdit.stageMine') &&
+      menus['editor/context'].some((x) => x.submenu === 'duoDiffEdit.menu' && x.group.startsWith('navigation')) &&
+      ['copyRight', 'copyLeft', 'copyWordsRight', 'copyWordsLeft', 'nextBlock', 'previousBlock', 'nextWords', 'previousWords',
+        'stageMine', 'stageAgreed', 'stageFile'].every((c) => own.includes(c)),
+      `menus: Stage Selected Lines in the title; the context menu opens with the submenu Duo Diff Edit, which holds every command of the diff (${JSON.stringify(own)})`);
     if (edSel) edSel.selection = new vscode.Selection(0, 0, 1, 3);   // ONE and the staged TWO; not four
     await vscode.commands.executeCommand('duoDiffEdit.stageMine');
     check(await until(() => gitc('show', ':cv.md') === 'ONE\nTWO\nTHREE\n', 5000),
@@ -281,6 +285,15 @@ exports.run = async () => {
     await vscode.commands.executeCommand('duoDiffEdit.stageFile');
     check(await until(() => gitc('show', ':cv.md') === 'ONE\nTWO\nTHREE\nfour\n', 5000),
       `Stage file: the whole of your text enters the index (${JSON.stringify(gitc('show', ':cv.md'))})`);
+    // Stage Agreed Lines from the submenu: a menu passes (uri, context), not lines, so every agreed line is staged
+    await setRight('one\nTWO\nTHREE\nfour\nfive\n');   // the first line differs from the proposal, the added last agrees
+    fs.writeFileSync(proposal, 'ONE\nTWO\nTHREE\nfour\nfive\n');
+    await until(() => left.getText() === 'ONE\nTWO\nTHREE\nfour\nfive\n', 5000);
+    await cursorOn('right', 0);
+    await new Promise((r) => setTimeout(r, 1000));   // the agreed runs follow both sides a moment after a change
+    await vscode.commands.executeCommand('duoDiffEdit.stageAgreed', right.uri, {});
+    check(await until(() => gitc('show', ':cv.md') === 'ONE\nTWO\nTHREE\nfour\nfive\n', 5000),
+      `Stage Agreed Lines from a menu: the agreed line enters the index, the one the sides differ in does not (${JSON.stringify(gitc('show', ':cv.md'))})`);
 
     // the keys, as Meld's (Visual Studio Code on a display without a window manager has no key focus to press them)
     const keys = Object.fromEntries(vscode.extensions.getExtension('stutek.duo-diff-edit').packageJSON.contributes.keybindings
