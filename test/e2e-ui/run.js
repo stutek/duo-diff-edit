@@ -149,13 +149,19 @@ exports.run = async () => {
     check(m && m.uri === left.uri.toString() && m.range.join(',') === '0,6,0,10',
       `Next Changed Words: the same word is also shown on the left (${m && m.range})`);
     check(vscode.window.activeTextEditor === ed && sel(ed) === '0,6,0,10', 'Next Changed Words: the focus and selection stay on the right');
+    check(m && m.mine && m.mine.join(',') === '0,6,0,10', `Next Changed Words: framed on the right too, both what a copy takes and what it overwrites (${m && m.mine})`);
     ed.selection = new vscode.Selection(1, 0, 1, 0);
     check(await until(() => !api.mirrored(), 2000), 'Next Changed Words: the left shows nothing once the selection leaves the word');
+    // the cursor put on a changed word by a click or a key (a right-click puts it there too): framed on both sides
+    ed.selection = new vscode.Selection(0, 8, 0, 8);
+    await vscode.commands.executeCommand('cursorLeft');
+    const f = await until(() => api.mirrored(), 2000) && api.mirrored();
+    check(f && f.range.join(',') === '0,6,0,10' && f.mine.join(',') === '0,6,0,10',
+      `cursor on a changed word: the change is framed on both sides (${f && f.range} / ${f && f.mine})`);
     ed.selection = new vscode.Selection(0, 6, 0, 10);
     await vscode.commands.executeCommand('duoDiffEdit.copyWordsLeft');
     check(await until(() => left.lineAt(0).text === 'alpha BETA gamma delta', 3000), 'Copy Changed Words Left: only that word goes to the left');
-    await vscode.commands.executeCommand('duoDiffEdit.nextWords');
-    check(sel(ed) === '0,17,0,22', `Next Changed Words: then the next one in the same line (${sel(ed)})`);
+    check(await until(() => sel(ed) === '0,17,0,22', 2000), `Copy Changed Words: the cursor goes on to the next changed word (${sel(ed)})`);
     ed = await cursorOn('left', 0);
     await vscode.commands.executeCommand('duoDiffEdit.nextWords');
     check(sel(ed) === '0,17,0,22', `Next Changed Words: on the left side too (${sel(ed)})`);
@@ -276,7 +282,7 @@ exports.run = async () => {
     check(menus['editor/title'].some((x) => x.command === 'duoDiffEdit.stageMine') &&
       menus['editor/context'].some((x) => x.submenu === 'duoDiffEdit.menu' && x.group.startsWith('navigation')) &&
       ['copyRight', 'copyLeft', 'copyWordsRight', 'copyWordsLeft', 'nextBlock', 'previousBlock', 'nextWords', 'previousWords',
-        'stageMine', 'stageAgreed', 'stageFile'].every((c) => own.includes(c)),
+        'stageMine', 'stageAgreed', 'stageFile'].every((c) => own.includes(c)) && own.slice(0, 2).join() === 'copyWordsRight,copyWordsLeft',
       `menus: Stage Selected Lines in the title; the context menu opens with the submenu Duo Diff Edit, which holds every command of the diff (${JSON.stringify(own)})`);
     if (edSel) edSel.selection = new vscode.Selection(0, 0, 1, 3);   // ONE and the staged TWO; not four
     await vscode.commands.executeCommand('duoDiffEdit.stageMine');
@@ -296,6 +302,21 @@ exports.run = async () => {
     await vscode.commands.executeCommand('duoDiffEdit.stageAgreed', right.uri, {});
     check(await until(() => gitc('show', ':cv.md') === 'ONE\nTWO\nTHREE\nfour\nfive\n', 5000),
       `Stage Agreed Lines from a menu: the agreed line enters the index, the one the sides differ in does not (${JSON.stringify(gitc('show', ':cv.md'))})`);
+
+    // ← and → in the diff's gutter (a proposed API, shown where the user enables it): the hovered block, not the cursor's
+    await setRight('a\nB\nc\nD\ne\n');
+    fs.writeFileSync(proposal, 'a\nb\nc\nd\ne\n');
+    await until(() => left.getText() === 'a\nb\nc\nd\ne\n', 5000);
+    await cursorOn('right', 1);
+    const hunk = (line) => ({ mapping: { original: { startLineNumber: line, endLineNumberExclusive: line + 1 },
+      modified: { startLineNumber: line, endLineNumberExclusive: line + 1 } }, originalUri: left.uri, modifiedUri: right.uri });
+    check(menus['diffEditor/gutter/hunk'].map((x) => x.command).join() === 'duoDiffEdit.copyLeft,duoDiffEdit.copyRight',
+      'gutter: ← and → over each block of the diff');
+    await vscode.commands.executeCommand('duoDiffEdit.copyRight', hunk(4));
+    check(await until(() => right.getText() === 'a\nB\nc\nd\ne\n', 3000), `gutter →: the block under the mouse (line 4) comes to the right, not the cursor's (${JSON.stringify(right.getText())})`);
+    await vscode.commands.executeCommand('duoDiffEdit.copyLeft', hunk(2));
+    check(await until(() => left.getText() === 'a\nB\nc\nd\ne\n', 3000), `gutter ←: the block under the mouse (line 2) goes to the left (${JSON.stringify(left.getText())})`);
+    await vscode.commands.executeCommand('workbench.action.files.revert');
 
     // the keys, as Meld's (Visual Studio Code on a display without a window manager has no key focus to press them)
     const keys = Object.fromEntries(vscode.extensions.getExtension('stutek.duo-diff-edit').packageJSON.contributes.keybindings

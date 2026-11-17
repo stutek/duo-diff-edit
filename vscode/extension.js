@@ -196,8 +196,8 @@ function diffOf(ed) {
 }
 // The diff at the cursor: its editor, the side the cursor is on ('a' left, 'b' right), both documents, their lines
 // and the changed blocks (or, with byWord, the changes word by word); undefined, with a message, when there is none.
-async function atCursor(what, byWord) {
-  const ed = vscode.window.activeTextEditor, input = diffOf(ed);
+async function atCursor(what, byWord, at) {   // at: an editor of the diff with the block selected (the gutter's ← →)
+  const ed = at || vscode.window.activeTextEditor, input = diffOf(ed);
   const key = ed && ed.document.uri.toString();
   const side = !input ? '' : key === input.original.toString() ? 'a' : 'b';
   if (!side) {
@@ -212,6 +212,19 @@ async function atCursor(what, byWord) {
   return { ed, side, a, b, A, B, list: byWord ? words(A, B, list, trim) : list };
 }
 const pos = (p) => new vscode.Position(p[0], p[1]);
+// The ← and → of the diff's gutter (menu diffEditor/gutter/hunk, a proposed API: shown only where the user enables
+// it) pass the hovered block: { mapping: { original, modified: { startLineNumber, endLineNumberExclusive } },
+// originalUri, modifiedUri }. Its lines are selected on a side that has them, so copy takes that block, not the cursor's.
+function gutterBlock(g) {
+  const m = g && g.mapping, side = m && (m.modified.endLineNumberExclusive > m.modified.startLineNumber ? 'modified' : 'original');
+  const u = side && g[`${side}Uri`];
+  const uri = u instanceof vscode.Uri ? u.toString() : u && u.scheme ? vscode.Uri.from(u).toString() : '';
+  const ed = uri && vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri && diffOf(e));
+  if (!ed) return undefined;
+  const r = m[side], last = Math.max(r.startLineNumber, r.endLineNumberExclusive - 1) - 1;
+  ed.selection = new vscode.Selection(r.startLineNumber - 1, 0, last, 0);
+  return ed;
+}
 
 // The events file (mailbox.events): what the user did that the disk does not tell
 let eventsFile;
@@ -264,8 +277,8 @@ const lastLine = (s) => (s.end.line > s.start.line && s.end.character === 0 ? s.
 
 // Copy Block / Copy Words Left and Right: the blocks or changes the cursor or selection touches (the rule of
 // Revert Block, blocks.touched; for words blocks.touchedWords), from the other side.
-async function copy(targetSide, byWord) {
-  const c = await atCursor('copy', byWord);
+async function copy(targetSide, byWord, at) {
+  const c = await atCursor('copy', byWord, at);
   if (!c) return;
   const { ed, side, a, b, A, B, list } = c;
   const hits = list.filter((k) => ed.selections.some((s) => (byWord
@@ -285,6 +298,7 @@ async function copy(targetSide, byWord) {
   if (copies.length > 50) copies.shift();
   undone.length = 0;
   log.info(`copied ${hits.length} ${byWord ? 'change(s)' : 'block(s)'} to the ${targetSide === 'a' ? 'left' : 'right'}: ${target.uri.fsPath}`);
+  if (byWord) await go(1, true);   // on to the next changed word, as the keys go word by word
 }
 
 // Undo and Redo as in a single editor, copies included. On the side a copy went to, the copy is an edit like any
@@ -351,26 +365,46 @@ const MIRROR = vscode.window.createTextEditorDecorationType({
 const MIRROR_POINT = vscode.window.createTextEditorDecorationType({
   before: { contentText: '', width: '3px', height: '1.2em', backgroundColor: new vscode.ThemeColor('editorCursor.foreground'), margin: '0 -1px 0 0' },
 });
-let shown;   // { source, target, range, mine } while a change is shown on the other side
+let shown;   // { source, target, range, mine } while a change is shown on both sides
+const frame = (e, r) => { e.setDecorations(MIRROR, r && !r.isEmpty ? [r] : []); e.setDecorations(MIRROR_POINT, r && r.isEmpty ? [r] : []); };
 function clearMirror() {
   if (!shown) return;
-  shown.target.setDecorations(MIRROR, []);
-  shown.target.setDecorations(MIRROR_POINT, []);
+  frame(shown.target);
+  frame(shown.source);
   shown = undefined;
 }
+// Both sides of the change are framed alike: a copy either way replaces one of them with the other (→ the right
+// side's, ← the left side's), so what a copy overwrites is in view before it.
 function mirror({ ed, side, a, b }, w, mine) {
   const other = side === 'a' ? b : a;
   const target = vscode.window.visibleTextEditors.find((t) => t.document.uri.toString() === other.uri.toString());
   if (!target) return;
   const [p, q] = w[side === 'a' ? 'b' : 'a'].map((x) => other.validatePosition(pos(x)));
   const range = new vscode.Range(p, q);
-  target.setDecorations(MIRROR, range.isEmpty ? [] : [range]);
-  target.setDecorations(MIRROR_POINT, range.isEmpty ? [range] : []);
+  if (shown && shown.source !== ed) frame(shown.source);
+  frame(target, range);
+  frame(ed, mine);
   target.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
   shown = { source: ed, target, range, mine };
   log.info(`go: shows ${other.uri.path} ${range.start.line}:${range.start.character}-${range.end.line}:${range.end.character}`);
 }
-const mirrored = () => shown && { uri: shown.target.document.uri.toString(), range: [shown.range.start.line, shown.range.start.character, shown.range.end.line, shown.range.end.character] };
+const mirrored = () => shown && { uri: shown.target.document.uri.toString(), range: [shown.range.start.line, shown.range.start.character, shown.range.end.line, shown.range.end.character],
+  mine: [shown.mine.start.line, shown.mine.start.character, shown.mine.end.line, shown.mine.end.character] };
+// The cursor on a changed word, put there by a click, a right-click or a key: that change is framed on both sides
+let wordTimer;
+function frameAtCursor(ed) {
+  clearTimeout(wordTimer);
+  wordTimer = setTimeout(async () => {
+    if (ed !== vscode.window.activeTextEditor || !diffOf(ed)) return;
+    const c = await atCursor('frame', true, ed);
+    if (!c) return;
+    const s = ed.selection, n = c.list.findIndex((w) => touchedWords([w], c.side, [s.start.line, s.start.character], [s.end.line, s.end.character]).length > 0);
+    if (n < 0) return;
+    const [p, q] = c.list[n][c.side].map((x) => ed.document.validatePosition(pos(x)));
+    const mine = new vscode.Range(p, q);
+    if (!(shown && shown.source === ed && shown.mine.isEqual(mine))) mirror(c, c.list[n], mine);
+  }, 150);
+}
 
 async function newWindow() {   // empty auxiliary window; its group is the last one (main window first, then auxiliary)
   const n = vscode.window.tabGroups.all.length;
@@ -525,6 +559,7 @@ async function handle([kind, file]) {   // a parsed request: a file in this wind
 exports.activate = (ctx) => {
   ctx.subscriptions.push(MIRROR, MIRROR_POINT, vscode.window.onDidChangeTextEditorSelection((e) => {   // the selection left the change
     if (shown && e.textEditor === shown.source && !shown.mine.contains(e.selections[0])) clearMirror();
+    if (e.kind !== undefined && diffOf(e.textEditor)) frameAtCursor(e.textEditor);   // a click or a key, not an extension
   }), vscode.workspace.onDidChangeTextDocument((e) => {
     if (shown && e.contentChanges.length && (e.document === shown.source.document || e.document === shown.target.document)) clearMirror();
   }));
@@ -543,11 +578,11 @@ exports.activate = (ctx) => {
   ctx.subscriptions.push(vscode.commands.registerCommand('duoDiffEdit.openPair', (uri) => {   // Explorer: the proposal ↔ the file
     if (uri instanceof vscode.Uri && uri.scheme === 'file') return handle(['pair', uri.fsPath]).catch(fail);
   }));
-  for (const [id, fn] of [['copyLeft', () => copy('a', false)], ['copyRight', () => copy('b', false)],
+  for (const [id, fn] of [['copyLeft', (g) => copy('a', false, gutterBlock(g))], ['copyRight', (g) => copy('b', false, gutterBlock(g))],
     ['copyWordsLeft', () => copy('a', true)], ['copyWordsRight', () => copy('b', true)],
     ['nextBlock', () => go(1, false)], ['previousBlock', () => go(-1, false)],
     ['nextWords', () => go(1, true)], ['previousWords', () => go(-1, true)], ['undo', undo], ['redo', redo]]) {
-    ctx.subscriptions.push(vscode.commands.registerCommand(`duoDiffEdit.${id}`, () => fn().catch(fail)));
+    ctx.subscriptions.push(vscode.commands.registerCommand(`duoDiffEdit.${id}`, (g) => fn(g).catch(fail)));
   }
   const setKey = () => {   // shows the copy buttons and keys only in a diff of two editable files
     const t = vscode.window.tabGroups.activeTabGroup.activeTab;

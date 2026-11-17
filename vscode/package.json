@@ -17,6 +17,9 @@
     "Other"
   ],
   "main": "./extension.js",
+  "enabledApiProposals": [
+    "contribDiffEditorGutterToolBarMenus"
+  ],
   "activationEvents": [
     "onStartupFinished",
     "onFileSystem:duo-diff-edit-proposal"
@@ -152,11 +155,15 @@
           "group": "navigation@0"
         }
       ],
+      "diffEditor/gutter/hunk": [
+        { "command": "duoDiffEdit.copyLeft", "when": "duoDiffEdit.twoFiles", "group": "primary@1" },
+        { "command": "duoDiffEdit.copyRight", "when": "duoDiffEdit.twoFiles", "group": "primary@2" }
+      ],
       "duoDiffEdit.menu": [
+        { "command": "duoDiffEdit.copyWordsRight", "group": "0_words@1" },
+        { "command": "duoDiffEdit.copyWordsLeft", "group": "0_words@2" },
         { "command": "duoDiffEdit.copyRight", "group": "1_copy@1" },
         { "command": "duoDiffEdit.copyLeft", "group": "1_copy@2" },
-        { "command": "duoDiffEdit.copyWordsRight", "group": "1_copy@3" },
-        { "command": "duoDiffEdit.copyWordsLeft", "group": "1_copy@4" },
         { "command": "duoDiffEdit.nextBlock", "group": "2_go@1" },
         { "command": "duoDiffEdit.previousBlock", "group": "2_go@2" },
         { "command": "duoDiffEdit.nextWords", "group": "2_go@3" },
