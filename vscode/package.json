@@ -3,7 +3,7 @@
   "publisher": "stutek",
   "displayName": "Duo Diff Edit",
   "description": "Write together with an AI agent, as in Meld: the agent's proposal on the left, your file on the right, blocks copied across either way.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -73,7 +73,7 @@
       },
       {
         "command": "duoDiffEdit.stageMine",
-        "title": "Stage Mine (Your Change at the Cursor)",
+        "title": "Stage Selected Lines (Your Text)",
         "category": "Duo Diff Edit",
         "icon": "$(add)"
       },
@@ -139,9 +139,14 @@
           "group": "navigation@-1"
         },
         {
-          "command": "duoDiffEdit.stageFile",
+          "command": "duoDiffEdit.stageMine",
           "when": "duoDiffEdit.twoFiles && duoDiffEdit.inGit",
           "group": "navigation@0"
+        },
+        {
+          "command": "duoDiffEdit.stageFile",
+          "when": "duoDiffEdit.twoFiles && duoDiffEdit.inGit",
+          "group": "navigation@1"
         }
       ],
       "editor/context": [

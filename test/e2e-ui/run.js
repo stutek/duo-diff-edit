@@ -265,8 +265,18 @@ exports.run = async () => {
     check(await until(() => gitc('show', ':cv.md') === 'one\nTWO\nTHREE\n', 5000),
       `Stage mine: your text enters the index, not the proposal (${JSON.stringify(gitc('show', ':cv.md'))})`);
     check(fs.readFileSync(proposal, 'utf8') === 'one\nTWO\nthree\n', 'Stage mine: the proposal is untouched');
-    // Stage File: every change of your file at once
+    // Stage Selected Lines (the same command, from the title or the context menu): every change the selection
+    // touches, and only those; git's own Stage Selected Ranges stages nothing in this diff
     await setRight('ONE\nTWO\nTHREE\nfour\n');
+    const edSel = await cursorOn('right', 0);
+    const menus = vscode.extensions.getExtension('stutek.duo-diff-edit').packageJSON.contributes.menus;
+    check(['editor/title', 'editor/context'].every((m) => menus[m].some((x) => x.command === 'duoDiffEdit.stageMine')),
+      'Stage Selected Lines: in the title and the context menu, beside git\'s Stage Selected Ranges');
+    if (edSel) edSel.selection = new vscode.Selection(0, 0, 1, 3);   // ONE and the staged TWO; not four
+    await vscode.commands.executeCommand('duoDiffEdit.stageMine');
+    check(await until(() => gitc('show', ':cv.md') === 'ONE\nTWO\nTHREE\n', 5000),
+      `Stage Selected Lines: the change the selection touches enters the index, the one below it does not (${JSON.stringify(gitc('show', ':cv.md'))})`);
+    // Stage File: every change of your file at once
     await cursorOn('right', 0);
     await vscode.commands.executeCommand('duoDiffEdit.stageFile');
     check(await until(() => gitc('show', ':cv.md') === 'ONE\nTWO\nTHREE\nfour\n', 5000),

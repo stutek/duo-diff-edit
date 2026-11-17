@@ -20,7 +20,7 @@ The diff shows **the agent's proposal on the left** and **your file on the right
 
 Visual Studio Code's gutter has only the arrow → (it is the built-in Revert Block, and an extension cannot add a ← there), so ← is the **← Prefer mine** button over the block, the **←** in the title and Alt+←.
 
-For a file in git, **Stage mine** (**+** over the change at the cursor on the right, or the context menu) puts your text of that change into the git index, and **Stage file** (the title) your whole text; the file stays as it is and the proposal is never staged. Neither shows outside git.
+For a file in git, **Stage mine** (**+** over the change at the cursor on the right) puts your text of that change into the git index, **Stage Selected Lines** (the title or the context menu) your text of every change the cursor or selection touches, and **Stage file** (the title) your whole text; the file stays as it is and the proposal is never staged. Neither shows outside git.
 
 The two buttons over the block at the cursor are CodeLenses; the extension turns `diffEditor.codeLens` on, so other extensions' CodeLenses show in diffs too (turn it off in Settings to have neither). The gutter menu's own **Revert Block** is Visual Studio Code's and keeps its name.
 
@@ -89,6 +89,7 @@ What the mailbox trusts and refuses: [SECURITY.md](SECURITY.md).
 - Your file on the right is Visual Studio Code's own document, reloaded from disk by its file watcher. On Linux that watcher needs an inotify instance; with none left it logs `EMFILE` (in **Output → File Watcher**) and the file reloads only when the window gets focus. The extension then warns once. Raise the limit: `sudo sysctl -w fs.inotify.max_user_instances=1024`, and to keep it, `echo fs.inotify.max_user_instances=1024 | sudo tee /etc/sysctl.d/60-inotify.conf`.
 - Visual Studio Code does not give extensions its diff, so ← and → find the block with a line diff of their own (honouring `diffEditor.ignoreTrimWhitespace`). For an ordinary text it marks the same blocks; where a long run of changed lines could be split two ways, the block may differ from the one drawn. The gutter arrow → is Visual Studio Code's own.
 - A gutter button for ← next to the built-in → would need a proposed API that a released extension cannot use.
+- Visual Studio Code's own **Stage Selected Ranges** (git's, in the title and the context menu of any diff whose right side is in git) stages nothing in a diff of two files, without a message: Visual Studio Code gives it the changes of that diff, not those against the index. Use the extension's **Stage Selected Lines** beside it; an extension cannot hide git's.
 - A **📖** button shows the file name, and for a file of another project that project's folder name (`📖 notes.md (Other)`); the full path on hover is not possible yet, as Claude Code's band in Visual Studio Code has no tooltip.
 
 ## Build and test from source
