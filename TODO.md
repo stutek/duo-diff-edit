@@ -50,3 +50,22 @@ Recorded 2026-11-16 10:44:42.629834988. Open; nothing in the code is changed yet
 2. **Extension, repeated request** (`openPair` / `showInAux`): when a tab with this pair is already open, do not run `vscode.diff` again and do not raise the window; log it and return. If raising on a repeated 📖 click is wanted, tell the two apart (the click may raise; an agent's request may not), or reveal with `preserveFocus: true`.
 3. **Extension, reload of the left side:** first measure what moves (a test in `test/e2e-ui/run.js`: a long file with wrapped paragraphs, the right editor scrolled to the middle with the cursor there; change the proposal on disk above and below the visible part, once with and once without a second `pair`; compare the right editor's `visibleRanges`, selection and the active editor before and after). Then hold the right side's first visible line and cursor through the reload and through the lens refresh, or keep lens rows from changing height above the visible part.
 4. Per the rules: a change in behaviour needs `python3 scripts/check.py --e2e` and its test; the README states the platform it was tested on.
+
+## Design: an own context menu in the diff instead of git's and the other extensions'
+
+Recorded 2026-11-17 10:46:39.747151832. Open: the owner's decision. Blocks nothing: 0.2.1 already puts **Stage Selected Lines** beside git's **Stage Selected Ranges**, which stages nothing in a diff of two files.
+
+**Request** (the owner's words, 2026-11-17, verbatim): »lahko v najinem editorju odregistrirava GIT in mnoge druge in imava svoj rclick meni?« ("can we unregister git and many others in our editor and have our own right-click menu?")
+
+**Checked:**
+
+- An extension cannot remove or replace another extension's menu items: in `vscode.d.ts` (microsoft/vscode main, 21 506 lines) menus appear only as the declarative `menus` extension point of `package.json`, with no call to change them. Registering git's command again throws `command 'git.stageSelectedRanges' already exists` (measured in Visual Studio Code 1.144).
+- The user can hide one title-bar action (Visual Studio Code's `menuService`, `hide.label`: right-click the icon → Hide '…'); it is hidden in that menu everywhere, git's own diff too.
+
+**Options:**
+
+- **(a) The right side through an own URI scheme (FileSystemProvider).** Goes: the items whose `when` asks for `resourceScheme == file`, git's among them. Costs: the file becomes a second document beside its `file:` one (two buffers, unsaved edits in either); whatever works on `file:` only stops on the right side (not each checked: language servers, spell check, Markdown PDF, the Source Control gutter, Timeline, local history); Claude Code gets a `duo:` URI for the selection (how it resolves it is not checked); every save passes through the provider (SECURITY.md). Visual Studio Code's own items (Cut, Copy, Go to …) stay, so it is no own menu either.
+- **(b) An own editor (a webview with Monaco).** Goes: every menu but the own. Costs: a rewrite; Monaco is a dependency (the rules: none); loses Visual Studio Code's diff, Undo, search and extensions.
+- **(c) Keep Visual Studio Code's menu, put the extension's items first.** Goes: nothing. Costs: the extension's items move to the top group (`navigation`) of the context menu or into a submenu "Duo Diff Edit"; git's items stay below them; the user hides git's title button if wanted.
+
+**Recommendation:** (c). (a) and (b) cost more than one git item that does nothing, and neither gives an own menu. Next step: the owner chooses; for (c) the group in `vscode/package.json` changes, with an e2e check of the menu order.
