@@ -3,7 +3,7 @@
   "publisher": "stutek",
   "displayName": "Duo Diff Edit",
   "description": "Write together with an AI agent, as in Meld: the agent's proposal on the left, your file on the right, blocks copied across either way.",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -134,16 +134,6 @@
         }
       ],
       "editor/title": [
-        {
-          "command": "duoDiffEdit.copyLeft",
-          "when": "duoDiffEdit.twoFiles",
-          "group": "navigation@-2"
-        },
-        {
-          "command": "duoDiffEdit.copyRight",
-          "when": "duoDiffEdit.twoFiles",
-          "group": "navigation@-1"
-        },
         {
           "command": "duoDiffEdit.stageMine",
           "when": "duoDiffEdit.twoFiles && duoDiffEdit.inGit",

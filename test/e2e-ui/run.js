@@ -271,6 +271,8 @@ exports.run = async () => {
     const edSel = await cursorOn('right', 0);
     const menus = vscode.extensions.getExtension('stutek.duo-diff-edit').packageJSON.contributes.menus;
     const own = (menus['duoDiffEdit.menu'] || []).map((x) => x.command.replace('duoDiffEdit.', ''));
+    check(!menus['editor/title'].some((x) => ['duoDiffEdit.copyLeft', 'duoDiffEdit.copyRight'].includes(x.command)),
+      'menus: no copy buttons in the title, far from the text; they are over the block, in the context menu and on the keys');
     check(menus['editor/title'].some((x) => x.command === 'duoDiffEdit.stageMine') &&
       menus['editor/context'].some((x) => x.submenu === 'duoDiffEdit.menu' && x.group.startsWith('navigation')) &&
       ['copyRight', 'copyLeft', 'copyWordsRight', 'copyWordsLeft', 'nextBlock', 'previousBlock', 'nextWords', 'previousWords',
