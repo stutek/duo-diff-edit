@@ -7,6 +7,16 @@ tags: [todo, bugs]
 
 # Open points
 
+## Bug: an inserted blank line merges separate line changes into one block
+
+Recorded 2026-11-17 13:11:39.202949218. Open; nothing in the code is changed yet. Blocks: taking one paragraph of the proposal without the next (the user takes a block and gets two paragraphs, or cannot take one alone).
+
+**Report** (the owner's words, 2026-11-17, verbatim): »zakaj pa šteje v8 in v10 kot en blok?« ("why does it count line 8 and line 10 as one block?").
+
+**Cause, checked in the code:** `blocks()` in `vscode/blocks.js` with the user's file (lines 8, 10, 11 changed, line 9 blank) against a proposal that changes the same lines and also inserts a blank line before line 11. The right side's blank line 9 can pair with the left side's blank line 9 or the inserted one; the tie-break `L[i + 1][j] >= L[i][j + 1]` (removed lines first) pairs it with the inserted one, so left 8–10 against right 8–8 become one block, and left 12 against right 10–11 another. Without the inserted blank line the same texts give three one-line blocks (8, 10, 11). Reproduced with `node -e` on `blocks()`.
+
+**Proposed fix:** among equal-length LCS alignments, prefer pairing identical lines at the nearest position (or prefer the alignment with more, smaller blocks), and add the case to `test/blocks.test.js`. Until then the agent proposes an inserted blank line in a round of its own.
+
 ## Bug: the user's view moves when the agent edits the left side
 
 Recorded 2026-11-16 10:44:42.629834988. Open; nothing in the code is changed yet. Blocks: reading and editing the right side while the agent proposes (the user loses their place and misses what the agent asked meanwhile).
