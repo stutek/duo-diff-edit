@@ -344,14 +344,24 @@ async function go(dir, byWord) {
   const ranges = list.map((k) => (byWord ? k[side] : [[k[side][0], 0], [k[side][0], 0]]))
     .map(([p, q]) => new vscode.Range(ed.document.validatePosition(pos(p)), ed.document.validatePosition(pos(q))));
   const at = ed.selection.active;
-  const i = dir > 0 ? ranges.findIndex((x) => (byWord ? x.start.isAfter(at) : x.start.line > at.line))
-    : ranges.map((x) => (byWord ? x.start.isBefore(ed.selection.start) : x.start.line < at.line)).lastIndexOf(true);
+  // A block with no lines on this side (deleted here) sits before the line its place is on: with the cursor on that
+  // line, not put there by going to the gap, the gap is the next block down and the previous one up.
+  const gap = (j) => !byWord && list[j][side][0] === list[j][side][1] && ranges[j].start.line === at.line
+    && !(landed && landed.ed === ed && ed.selection.isEmpty && landed.at.isEqual(at));
+  const i = dir > 0 ? ranges.findIndex((x, j) => (byWord ? x.start.isAfter(at) : x.start.line > at.line || gap(j)))
+    : ranges.map((x, j) => (byWord ? x.start.isBefore(ed.selection.start) : x.start.line < at.line || gap(j))).lastIndexOf(true);
   const n = i >= 0 ? i : dir > 0 ? 0 : ranges.length - 1;
   const r = ranges[n];
   ed.selection = new vscode.Selection(r.start, r.end);
   ed.revealRange(r, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-  if (byWord) mirror(c, list[n], r);
+  const k = list[n], other = side === 'a' ? 'b' : 'a';
+  landed = !byWord && k[side][0] === k[side][1] ? { ed, at: r.start } : undefined;
+  if (byWord) mirror(c, k, r);
+  else if (landed) {   // the gap: a bar where the lines would go, the other side's lines framed (what a copy inserts or removes)
+    mirror(c, { [side]: [[k[side][0], 0], [k[side][0], 0]], [other]: [[k[other][0], 0], [k[other][1] - 1, 1e9]] }, r);
+  }
 }
+let landed;   // { ed, at }: Next or Previous Changed Block put the cursor on a gap there; it counts while the cursor stays
 
 // The change the cursor went to, also on the other side of the diff (the same pairing as Copy Changed Words: the
 // word diff's range on that side): a decoration, not a selection, so the focus, the selection there and Copy stay
@@ -561,6 +571,7 @@ exports.activate = (ctx) => {
     if (shown && e.textEditor === shown.source && !shown.mine.contains(e.selections[0])) clearMirror();
     if (e.kind !== undefined && diffOf(e.textEditor)) frameAtCursor(e.textEditor);   // a click or a key, not an extension
   }), vscode.workspace.onDidChangeTextDocument((e) => {
+    if (landed && e.contentChanges.length) landed = undefined;   // after an edit, the gap's place means something else
     if (shown && e.contentChanges.length && (e.document === shown.source.document || e.document === shown.target.document)) clearMirror();
   }));
   storage = ctx.globalStorageUri.fsPath;

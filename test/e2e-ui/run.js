@@ -303,6 +303,38 @@ exports.run = async () => {
     check(await until(() => gitc('show', ':cv.md') === 'ONE\nTWO\nTHREE\nfour\nfive\n', 5000),
       `Stage Agreed Lines from a menu: the agreed line enters the index, the one the sides differ in does not (${JSON.stringify(gitc('show', ':cv.md'))})`);
 
+    // a block with no lines on one side (lines deleted there): Next Changed Block stops at it, and both copies work
+    for (const [name, mineText, propText, side, took, gave, other] of [
+      ['deleted on the right', 'a\nb\nc\nd\nE\n', 'a\nb\nX\nc\nd\ne\n', 'right', 'a\nb\nX\nc\nd\nE\n', 'a\nb\nc\nd\ne\n', 'left'],
+      ['deleted on the left', 'a\nb\nY\nc\nd\nE\n', 'a\nb\nc\nd\ne\n', 'left', 'a\nb\nc\nd\nE\n', 'a\nb\nY\nc\nd\ne\n', 'right']]) {
+      await setRight(mineText);
+      fs.writeFileSync(proposal, propText);
+      check(await until(() => left.getText() === propText, 5000), `${name}: the left loads the proposal`);
+      let e = await cursorOn(side, 0);
+      await vscode.commands.executeCommand('duoDiffEdit.nextBlock');
+      check(e && e.selection.active.line === 2, `${name}: Next Changed Block stops at the empty place, line 3 on the ${side} (${e && e.selection.active.line + 1})`);
+      await vscode.commands.executeCommand('duoDiffEdit.copyRight');
+      check(await until(() => right.getText() === took, 3000), `${name}: → from there makes that block of the right as the left (${JSON.stringify(right.getText())})`);
+      await setRight(mineText);
+      // the cursor already on the line below the gap (a click there, or left there by a copy): the gap is still ahead
+      e = await cursorOn(side, 2);
+      await vscode.commands.executeCommand('duoDiffEdit.nextBlock');
+      const g = api.mirrored();
+      check(e && e.selection.active.line === 2 && g && g.uri === (other === 'left' ? left : right).uri.toString() && g.range.join(',') === '2,0,2,1',
+        `${name}: from the line below the gap, Next Changed Block goes to the gap and frames the ${other} side's line (${e && e.selection.active.line + 1}, ${g && g.range})`);
+      await vscode.commands.executeCommand('duoDiffEdit.copyLeft');
+      check(await until(() => left.getText() === gave, 3000), `${name}: ← from there makes that block of the left as the right (${JSON.stringify(left.getText())})`);
+      const back = new vscode.WorkspaceEdit();   // the left as the proposal again
+      back.replace(left.uri, new vscode.Range(0, 0, left.lineCount, 0), propText);
+      await vscode.workspace.applyEdit(back);
+      await left.save();
+      check(await until(() => left.getText() === propText && !left.isDirty, 3000), `${name}: the left is the proposal again`);
+      e = await cursorOn(side, 2);
+      await vscode.commands.executeCommand('duoDiffEdit.nextBlock');
+      await vscode.commands.executeCommand('duoDiffEdit.nextBlock');
+      check(e && e.selection.active.line === 4, `${name}: a second Next Changed Block goes on past the gap, to line 5 (${e && e.selection.active.line + 1})`);
+    }
+
     // ← and → in the diff's gutter (a proposed API, shown where the user enables it): the hovered block, not the cursor's
     await setRight('a\nB\nc\nD\ne\n');
     fs.writeFileSync(proposal, 'a\nb\nc\nd\ne\n');
