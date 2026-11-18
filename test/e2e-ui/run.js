@@ -186,17 +186,26 @@ exports.run = async () => {
     fs.writeFileSync(proposal, 'P ONE\nP TWO\nend\n');
     check(await until(() => left.getText() === 'P ONE\nP TWO\nend\n', 5000), 'left: loads the next proposal');
     ed = await cursorOn('right', 1);
-    check(vscode.workspace.getConfiguration('diffEditor').get('codeLens') === true, 'lenses: on in diffs by default (configurationDefaults)');
-    let titles = [];
-    await until(async () => {
-      const ls = await vscode.commands.executeCommand('vscode.executeCodeLensProvider', right.uri);
-      titles = (ls || []).filter((l) => l.command && l.range.start.line === 1).map((l) => l.command.title);
-      return titles.some((x) => x.includes('Accept suggestion')) && titles.some((x) => x.includes('Prefer mine'));
-    }, 3000);
-    check(titles.some((x) => x.includes('Accept suggestion')) && titles.some((x) => x.includes('Prefer mine')),
-      `lenses: Accept suggestion and Prefer mine over the block at the cursor (${JSON.stringify(titles)})`);
-    await vscode.commands.executeCommand('duoDiffEdit.copyRight');
-    check(await until(() => right.getText() === 'p one\nP TWO\nend\n', 3000), `Copy Block Right: of two changed lines one below the other, only the cursor's (${JSON.stringify(right.getText())})`);
+    // the buttons are in a hover over the line, never a CodeLens row, which would move the text while the user types
+    const ours = ['duoDiffEdit.copyRight', 'duoDiffEdit.copyLeft', 'duoDiffEdit.stageMine', 'duoDiffEdit.stageAgreed'];
+    const hoverLinks = async (doc, line) => {
+      const hs = await vscode.commands.executeCommand('vscode.executeHoverProvider', doc.uri, new vscode.Position(line, 0));
+      const text = (hs || []).flatMap((h) => h.contents).map((c) => (typeof c === 'string' ? c : c.value)).join('\n');
+      return [...text.matchAll(/\[([^\]]+)\]\(command:([\w.]+)\?([^ )]+)/g)].map((m) => ({ title: m[1], command: m[2], args: JSON.parse(decodeURIComponent(m[3])) }));
+    };
+    const lensesOfOurs = async (doc) => ((await vscode.commands.executeCommand('vscode.executeCodeLensProvider', doc.uri)) || [])
+      .filter((l) => l.command && ours.includes(l.command.command));
+    check(vscode.workspace.getConfiguration('diffEditor').get('codeLens') !== true, 'no CodeLens: diffEditor.codeLens keeps Visual Studio Code\'s default (off)');
+    check((await lensesOfOurs(right)).length === 0, 'no CodeLens: no row of ours over the block at the cursor');
+    let links = [];
+    await until(async () => (links = await hoverLinks(right, 1)).length >= 2, 3000);
+    check(links.some((x) => x.title.includes('Accept suggestion')) && links.some((x) => x.title.includes('Prefer mine')),
+      `hover: Accept suggestion and Prefer mine over a changed line (${JSON.stringify(links.map((x) => x.title))})`);
+    check(!(await hoverLinks(right, 2)).some((x) => x.command.startsWith('duoDiffEdit.copy')), 'hover: no Accept or Prefer over a line both sides hold alike');
+    ed.selection = new vscode.Selection(2, 0, 2, 0);   // the cursor elsewhere: the hover's button takes its own line
+    const accept = links.find((x) => x.command === 'duoDiffEdit.copyRight');
+    if (accept) await vscode.commands.executeCommand(accept.command, ...accept.args);
+    check(await until(() => right.getText() === 'p one\nP TWO\nend\n', 3000), `Accept suggestion from the hover: of two changed lines one below the other, only the hovered one, wherever the cursor is (${JSON.stringify(right.getText())})`);
     check(fs.readFileSync(saves, 'utf8').includes(` ACCEPT 2-2 ${file}\n`), 'events: Accept Suggestion is a line with the lines of the user\'s file');
     ed.selection = new vscode.Selection(0, 0, 1, 0);
     await vscode.commands.executeCommand('duoDiffEdit.copyRight');
@@ -244,14 +253,12 @@ exports.run = async () => {
     check(await until(() => left.getText() === 'one\nTWO\nthree\n', 5000), 'agreed: the left loads the proposal with the same second line');
     await cursorOn('right', 0);
     let stages = [];
-    await until(async () => {
-      const ls = await vscode.commands.executeCommand('vscode.executeCodeLensProvider', right.uri);
-      stages = (ls || []).filter((l) => l.command && l.command.command === 'duoDiffEdit.stageAgreed');
-      return stages.length > 0;
-    }, 10000);
-    check(stages.length === 1 && stages[0].range.start.line === 1,
-      `agreed: one Stage button, over the line alike on both sides and not in the index (${JSON.stringify(stages.map((l) => l.range.start.line))})`);
-    if (stages.length) await vscode.commands.executeCommand(stages[0].command.command, ...stages[0].command.arguments);
+    await until(async () => (stages = (await hoverLinks(right, 1)).filter((x) => x.command === 'duoDiffEdit.stageAgreed')).length > 0, 10000);
+    const stage0 = (await hoverLinks(right, 0)).filter((x) => x.command === 'duoDiffEdit.stageAgreed');
+    check(stages.length === 1 && JSON.stringify(stages[0].args[1]) === '[1,1]' && stage0.length === 0,
+      `agreed: a Stage button in the hover of the line alike on both sides and not in the index, none on a staged line (${JSON.stringify(stages.map((x) => x.args))})`);
+    check((await lensesOfOurs(right)).length === 0, 'agreed: no CodeLens row over the agreed lines');
+    if (stages.length) await vscode.commands.executeCommand(stages[0].command, ...stages[0].args);
     check(await until(() => gitc('show', ':cv.md') === 'one\nTWO\nthree\n', 5000),
       `Stage: only the agreed line enters the index, not the one the sides differ in (${JSON.stringify(gitc('show', ':cv.md'))})`);
     check(fs.readFileSync(saves, 'utf8').includes(` STAGE 2-2 ${file}\n`), 'events: Stage is a line too');
@@ -260,14 +267,11 @@ exports.run = async () => {
     // Stage Mine: your text where the sides differ too (the proposal has 'three', you have 'THREE'); never the proposal's
     const edIdx = await cursorOn('right', 2);
     let mine = [];
-    await until(async () => {
-      const ls = await vscode.commands.executeCommand('vscode.executeCodeLensProvider', right.uri);
-      mine = (ls || []).filter((l) => l.command && l.command.command === 'duoDiffEdit.stageMine');
-      return mine.length > 0;
-    }, 10000);
-    check(mine.length === 1 && mine[0].range.start.line === 2, `Stage mine: one button over your change at the cursor (${JSON.stringify(mine.map((l) => l.range.start.line))})`);
+    await until(async () => (mine = (await hoverLinks(right, 2)).filter((x) => x.command === 'duoDiffEdit.stageMine')).length > 0, 10000);
+    check(mine.length === 1 && mine[0].args[0].line === 2, `Stage mine: one button in the hover of your change (${JSON.stringify(mine.map((x) => x.args))})`);
     check(edIdx && edIdx.document === right, 'Stage mine: the cursor is on your file');
-    await vscode.commands.executeCommand('duoDiffEdit.stageMine');
+    edIdx.selection = new vscode.Selection(0, 0, 0, 0);   // the cursor elsewhere: the hover's button takes its own line
+    if (mine.length) await vscode.commands.executeCommand(mine[0].command, ...mine[0].args);
     check(await until(() => gitc('show', ':cv.md') === 'one\nTWO\nTHREE\n', 5000),
       `Stage mine: your text enters the index, not the proposal (${JSON.stringify(gitc('show', ':cv.md'))})`);
     check(fs.readFileSync(proposal, 'utf8') === 'one\nTWO\nthree\n', 'Stage mine: the proposal is untouched');

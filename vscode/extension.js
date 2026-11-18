@@ -236,41 +236,47 @@ function emit(what, file) {
   } catch (err) { log.warn(`events: ${err}`); }
 }
 
-// The two buttons over the block the cursor is on, in the editor that has the cursor; on the right side also a
-// Stage button over each run of agreed, unstaged lines (refreshAgreed)
-const lensChanged = new vscode.EventEmitter();
-function lenses(doc) {
-  const s = doc.uri.scheme === 'file' && agreedOf.get(doc.uri.fsPath);
-  const stage = s ? s.runs.map(([f, l]) => new vscode.CodeLens(new vscode.Range(f, 0, f, 0), {
-    title: `$(check) Stage agreed line${l > f ? 's' : ''}`, command: 'duoDiffEdit.stageAgreed', arguments: [doc.uri.fsPath, [f, l]],
-    tooltip: 'Both sides hold these lines alike; put them into the git index (the file stays as it is)',
-  })) : [];
-  return [...stage, ...cursorLenses(doc)];
-}
-function cursorLenses(doc) {
-  const ed = vscode.window.activeTextEditor;
-  if (!ed || ed.document !== doc) return [];
-  const input = diffOf(ed);
-  if (!input) return [];
+// The buttons of the line under the mouse, in a hover: Accept suggestion and Prefer mine on a changed block, Stage
+// mine on your change, Stage agreed lines on agreed, unstaged lines (refreshAgreed). A hover, not a CodeLens: a
+// CodeLens is a row of its own that comes and goes with the cursor and with each write of the proposal, and every
+// such row moves the text below it while the user reads or types.
+const HOVER_COMMANDS = ['duoDiffEdit.copyRight', 'duoDiffEdit.copyLeft', 'duoDiffEdit.stageMine', 'duoDiffEdit.stageAgreed'];
+const link = (title, command, args, tip) => `[${title}](command:${command}?${encodeURIComponent(JSON.stringify(args))} "${tip}")`;
+function hover(doc, p) {
+  const ed = vscode.window.visibleTextEditors.find((e) => e.document === doc && diffOf(e));
+  const input = ed && diffOf(ed);
+  if (!input) return undefined;
   const side = doc.uri.toString() === input.original.toString() ? 'a' : 'b';
   const other = vscode.workspace.textDocuments.find((d) => d.uri.toString() === (side === 'a' ? input.modified : input.original).toString());
-  if (!other) return [];
+  if (!other) return undefined;
   const [A, B] = side === 'a' ? [doc, other] : [other, doc];
   const list = blocks(A.getText().split(eolOf(A)), B.getText().split(eolOf(B)), vscode.workspace.getConfiguration('diffEditor').get('ignoreTrimWhitespace', true));
-  const line = ed.selection.active.line;
-  // + Stage mine: your text of the change (index → your file) the cursor is on, not only where the two sides differ
-  const g = side === 'b' && agreedOf.get(doc.uri.fsPath);
-  const stage = (g ? touched(blocks(g.I, doc.getText().split(eolOf(doc)), false) || [], 'b', line, line) : []).map((k) => {
-    const at = Math.min(k.b[0], doc.lineCount - 1);
-    return new vscode.CodeLens(new vscode.Range(at, 0, at, 0), { title: '$(add) Stage mine', command: 'duoDiffEdit.stageMine',
-      tooltip: 'Put your text of this change into the git index (the file stays as it is)' });
-  });
-  return [...stage, ...(list ? touched(list, side, line, line) : [])].flatMap((k) => {
-    if (k instanceof vscode.CodeLens) return [k];
-    const at = new vscode.Range(Math.min(k[side][0], doc.lineCount - 1), 0, Math.min(k[side][0], doc.lineCount - 1), 0);
-    return [new vscode.CodeLens(at, { title: '→ Accept suggestion (Alt+→)', command: 'duoDiffEdit.copyRight', tooltip: 'Take the proposal\'s block into your file' }),
-      new vscode.CodeLens(at, { title: '← Prefer mine (Alt+←)', command: 'duoDiffEdit.copyLeft', tooltip: 'Put your block into the proposal: the agent prepares a new suggestion or says why its own is better' })];
-  });
+  const line = p.line, at = { uri: doc.uri.toString(), line }, out = [];
+  // only a block's own lines, or the place of lines removed on this side; not the line below a block (touched's rule)
+  const on = (k) => (k[side][0] < k[side][1] ? k[side][0] <= line && line < k[side][1] : k[side][0] === line);
+  if (list && list.some(on)) {
+    out.push(link('→ Accept suggestion', 'duoDiffEdit.copyRight', [at], 'Take the proposal\'s block into your file (Alt+→)'),
+      link('← Prefer mine', 'duoDiffEdit.copyLeft', [at], 'Put your block into the proposal: the agent prepares a new suggestion or says why its own is better (Alt+←)'));
+  }
+  const g = side === 'b' && doc.uri.scheme === 'file' && agreedOf.get(doc.uri.fsPath);
+  if (g) {
+    const run = g.runs.find(([f, l]) => f <= line && line <= l);
+    if (run) out.push(link(`✓ Stage agreed line${run[1] > run[0] ? 's' : ''}`, 'duoDiffEdit.stageAgreed', [doc.uri.fsPath, [run[0], run[1]]], 'Both sides hold these lines alike; put them into the git index (the file stays as it is)'));
+    else if (touched(blocks(g.I, doc.getText().split(eolOf(doc)), false) || [], 'b', line, line).length) {
+      out.push(link('+ Stage mine', 'duoDiffEdit.stageMine', [at], 'Put your text of this change into the git index (the file stays as it is)'));
+    }
+  }
+  if (!out.length) return undefined;
+  const md = new vscode.MarkdownString(out.join(' &nbsp;·&nbsp; '));
+  md.isTrusted = { enabledCommands: HOVER_COMMANDS };
+  return new vscode.Hover(md, doc.lineAt(line).range);
+}
+// A hover button's line ({ uri, line }): the cursor goes there, in that editor, so a command takes that line's block
+function hoverLine(h) {
+  const ed = h && typeof h.uri === 'string' && Number.isInteger(h.line) && vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === h.uri && diffOf(e));
+  if (!ed || h.line >= ed.document.lineCount) return undefined;
+  ed.selection = new vscode.Selection(h.line, 0, h.line, 0);
+  return ed;
 }
 // a selection of whole lines (Shift+↓) ends at the start of the next line, which it does not hold
 const lastLine = (s) => (s.end.line > s.start.line && s.end.character === 0 ? s.end.line - 1 : s.end.line);
@@ -516,7 +522,7 @@ async function intoIndex(file, s, pick) {   // these hunks (index → your file)
   refreshAgreed();
 }
 let agreedTimer;
-function refreshAgreed() {   // the decorations and Stage lenses of every visible diff of two files, a moment after a change
+function refreshAgreed() {   // the decorations and Stage buttons of every visible diff of two files, a moment after a change
   clearTimeout(agreedTimer);
   agreedTimer = setTimeout(async () => {
     for (const ed of vscode.window.visibleTextEditors) {
@@ -530,7 +536,6 @@ function refreshAgreed() {   // the decorations and Stage lenses of every visibl
     const act = diffOf(vscode.window.activeTextEditor) || (vscode.window.tabGroups.activeTabGroup.activeTab || {}).input;
     const f = act && act.modified && act.modified.scheme === 'file' && act.modified.fsPath;
     vscode.commands.executeCommand('setContext', 'duoDiffEdit.inGit', !!(f && agreedOf.get(f)));   // Stage buttons only for a file in git
-    lensChanged.fire();
   }, 300);
 }
 async function handle([kind, file]) {   // a parsed request: a file in this window's workspace, or an orphan "saved"
@@ -589,7 +594,7 @@ exports.activate = (ctx) => {
   ctx.subscriptions.push(vscode.commands.registerCommand('duoDiffEdit.openPair', (uri) => {   // Explorer: the proposal ↔ the file
     if (uri instanceof vscode.Uri && uri.scheme === 'file') return handle(['pair', uri.fsPath]).catch(fail);
   }));
-  for (const [id, fn] of [['copyLeft', (g) => copy('a', false, gutterBlock(g))], ['copyRight', (g) => copy('b', false, gutterBlock(g))],
+  for (const [id, fn] of [['copyLeft', (g) => copy('a', false, hoverLine(g) || gutterBlock(g))], ['copyRight', (g) => copy('b', false, hoverLine(g) || gutterBlock(g))],
     ['copyWordsLeft', () => copy('a', true)], ['copyWordsRight', () => copy('b', true)],
     ['nextBlock', () => go(1, false)], ['previousBlock', () => go(-1, false)],
     ['nextWords', () => go(1, true)], ['previousWords', () => go(-1, true)], ['undo', undo], ['redo', redo]]) {
@@ -626,17 +631,13 @@ exports.activate = (ctx) => {
       if (t) emit(`SAVE manual ${t.input.original.toString() === key ? 'left' : 'right'}`, t.input.modified.fsPath);
     }));
   }
-  // Accept Suggestion and Prefer Mine over the block at the cursor (a CodeLens: the diff's own gutter menu takes no
-  // extension's buttons without a proposed API); diffEditor.codeLens is on by default (package.json)
-  let lensTimer;
-  const relens = () => { clearTimeout(lensTimer); lensTimer = setTimeout(() => lensChanged.fire(), 150); };
-  ctx.subscriptions.push(lensChanged, vscode.window.onDidChangeTextEditorSelection(relens), vscode.window.onDidChangeActiveTextEditor(relens),
-    vscode.languages.registerCodeLensProvider([{ scheme: 'file' }, { scheme: SCHEME }], { onDidChangeCodeLenses: lensChanged.event, provideCodeLenses: lenses }));
+  // Accept Suggestion, Prefer Mine and Stage in a hover over the line (hover): no row of its own, so the text never moves
+  ctx.subscriptions.push(vscode.languages.registerHoverProvider([{ scheme: 'file' }, { scheme: SCHEME }], { provideHover: hover }));
   // agreed, unstaged lines follow both sides, the visible editors and the index (the git extension's state)
   ctx.subscriptions.push(vscode.workspace.onDidChangeTextDocument((e) => { if ([...agreedOf.keys()].includes(e.document.uri.fsPath) || e.document.uri.scheme === SCHEME) refreshAgreed(); }),
     vscode.window.onDidChangeVisibleTextEditors(refreshAgreed), AGREED,
-    vscode.commands.registerCommand('duoDiffEdit.stageMine', () => {
-      const f = (diffOf(vscode.window.activeTextEditor) || {}).modified?.fsPath;
+    vscode.commands.registerCommand('duoDiffEdit.stageMine', (h) => {
+      const f = (diffOf(hoverLine(h) || vscode.window.activeTextEditor) || {}).modified?.fsPath;
       return f ? stageMine(f, false).catch(fail) : undefined;
     }),
     vscode.commands.registerCommand('duoDiffEdit.stageFile', () => {

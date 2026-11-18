@@ -35,9 +35,6 @@
     "virtualWorkspaces": false
   },
   "contributes": {
-    "configurationDefaults": {
-      "diffEditor.codeLens": true
-    },
     "commands": [
       {
         "command": "duoDiffEdit.openPair",
