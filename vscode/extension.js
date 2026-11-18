@@ -493,7 +493,10 @@ async function stageAgreed(file, lines) {   // the agreed hunks on these lines o
   const s = t && await agreed(t.input);
   if (!s) return void vscode.window.showInformationMessage('Duo Diff Edit: nothing to stage here (the file is not in a repository Source Control has open).');
   const pick = lines ? s.runs.filter(([f, l]) => f <= lines[1] && lines[0] <= l).map(([, , k]) => k) : s.ok;
-  if (!pick.length) return void vscode.window.setStatusBarMessage('Duo Diff Edit: no agreed, unstaged lines here', 3000);
+  if (!pick.length) {
+    log.info(`stage agreed: none ${lines ? `on lines ${lines[0] + 1}-${lines[1] + 1}` : 'in the file'} of ${file}`);
+    return void vscode.window.setStatusBarMessage('Duo Diff Edit: no agreed, unstaged lines here', 3000);
+  }
   return intoIndex(file, s, pick);
 }
 // Stage Mine: your text, agreed or not, into the git index: the changes (index → your file) the cursor or selection
@@ -507,7 +510,10 @@ async function stageMine(file, whole) {
     const ed = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === t.input.modified.toString());
     pick = ed ? s.hunks.filter((k) => ed.selections.some((x) => touched(s.hunks, 'b', x.start.line, lastLine(x)).includes(k))) : [];
   }
-  if (!pick.length) return void vscode.window.setStatusBarMessage(`Duo Diff Edit: nothing unstaged ${whole ? 'in the file' : 'at the cursor in your file (the right side)'}`, 3000);
+  if (!pick.length) {
+    log.info(`stage mine: nothing unstaged ${whole ? 'in' : 'at the cursor of'} ${file}`);
+    return void vscode.window.setStatusBarMessage(`Duo Diff Edit: nothing unstaged ${whole ? 'in the file' : 'at the cursor in your file (the right side)'}`, 3000);
+  }
   return intoIndex(file, s, pick);
 }
 async function intoIndex(file, s, pick) {   // these hunks (index → your file) applied to the index text

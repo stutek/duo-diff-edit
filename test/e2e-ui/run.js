@@ -288,6 +288,10 @@ exports.run = async () => {
       ['copyRight', 'copyLeft', 'copyWordsRight', 'copyWordsLeft', 'nextBlock', 'previousBlock', 'nextWords', 'previousWords',
         'stageMine', 'stageAgreed', 'stageFile'].every((c) => own.includes(c)) && own.slice(0, 2).join() === 'copyWordsRight,copyWordsLeft',
       `menus: Stage Selected Lines in the title; the context menu opens with the submenu Duo Diff Edit, which holds every command of the diff (${JSON.stringify(own)})`);
+    // git's Stage Selected Ranges stands at the top of the menu and cannot be hidden: ours stands above it
+    const top = menus['editor/context'].find((x) => x.command === 'duoDiffEdit.stageMine');
+    check(top && top.group === 'navigation@1' && top.when.includes('duoDiffEdit.inGit'),
+      `menus: Stage Selected Lines at the top of the context menu, under the submenu, above git's Stage Selected Ranges (${JSON.stringify(top)})`);
     if (edSel) edSel.selection = new vscode.Selection(0, 0, 1, 3);   // ONE and the staged TWO; not four
     await vscode.commands.executeCommand('duoDiffEdit.stageMine');
     check(await until(() => gitc('show', ':cv.md') === 'ONE\nTWO\nTHREE\n', 5000),

@@ -7,15 +7,21 @@ tags: [todo, bugs]
 
 # Open points
 
+## Bug: Restart Extension Host closes the diff windows that are in view
+
+Recorded 2026-11-18 12:00:32.456820096. The owner, verbatim: »restart extension host skrije sekundarna okna VS code?« ("does restart extension host hide VS Code's secondary windows?"). Measured in the log: `2026-11-18 11:59:54.338 closed 2 diff(s) restored from before the reload`. `closeRestored` (`vscode/extension.js`) closes every diff of ours without unsaved edits on activation, meant for a window reload, where a restored auxiliary window may not show; on Restart Extension Host the windows are alive and in view, and closing their tabs closes them.
+
+**Proposed fix:** close only after a window reload, not after an extension-host restart. Candidate: remember `vscode.env.sessionId` in `workspaceState` and skip when it is unchanged. Not checked: whether `sessionId` stays across Restart Extension Host and changes on Reload Window; measure both in `test/e2e-ui/run.js` first. Blocks: nothing.
+
 ## Bug: a right-click Stage leaves the blue (agreed, unstaged) lines
 
 Recorded 2026-11-18 11:54:29.813316952. The owner, verbatim: »desni klik in stage še ne odpravi modrega ozadja?« ("right-click and stage still does not remove the blue background?"), then »zakaj ni stage gumba ob mouse hover?« ("why is there no Stage button on mouse hover?"). Pair mode, the JobHunt2026 CV of OTP banka, installed 0.2.4.
 
 **Checked:** no Duo Diff Edit log of any window of the session (`~/.config/Code/logs/20261118T072254/window*/exthost/stutek.duo-diff-edit/`) has a `staged` line, the events file has no `STAGE`, and `git status` shows the file ` M` (nothing in the index). So none of our Stage commands staged anything. The hover buttons are in commit 7857667, not in the installed 0.2.4 (it has no hover provider, only CodeLens rows, shown only with `diffEditor.codeLens`).
 
-**Not known:** which item the owner clicked: git's own "Stage Selected Ranges" (top level of the menu; stages nothing in this diff, see the menu design below) or ours "Duo Diff Edit → Stage Selected Lines (Your Text)", which ends with a status-bar message only, without a log line, when the right side's cursor is on no unstaged change.
+**Cause (the owner's screenshot):** git's own "Stage Selected Ranges", at the top level of the menu, while ours was only in the submenu.
 
-**Fix:** (1) log every "nothing to stage" outcome of `stageMine` and `stageAgreed` (`log.info`), so the next report shows which path ran; (2) release 0.2.5 with the hover buttons (blocked: the owner approves push and release). Blocks: nothing else.
+**Fixed in 0.2.5:** Stage Selected Lines also at the top of the context menu (`navigation@1`), above git's; every "nothing to stage" outcome is logged. Left: the owner's test in use; remove this item after it.
 
 ## Bug: an inserted blank line merges separate line changes into one block
 
