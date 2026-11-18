@@ -7,6 +7,16 @@ tags: [todo, bugs]
 
 # Open points
 
+## Bug: a right-click Stage leaves the blue (agreed, unstaged) lines
+
+Recorded 2026-11-18 11:54:29.813316952. The owner, verbatim: »desni klik in stage še ne odpravi modrega ozadja?« ("right-click and stage still does not remove the blue background?"), then »zakaj ni stage gumba ob mouse hover?« ("why is there no Stage button on mouse hover?"). Pair mode, the JobHunt2026 CV of OTP banka, installed 0.2.4.
+
+**Checked:** no Duo Diff Edit log of any window of the session (`~/.config/Code/logs/20261118T072254/window*/exthost/stutek.duo-diff-edit/`) has a `staged` line, the events file has no `STAGE`, and `git status` shows the file ` M` (nothing in the index). So none of our Stage commands staged anything. The hover buttons are in commit 7857667, not in the installed 0.2.4 (it has no hover provider, only CodeLens rows, shown only with `diffEditor.codeLens`).
+
+**Not known:** which item the owner clicked: git's own "Stage Selected Ranges" (top level of the menu; stages nothing in this diff, see the menu design below) or ours "Duo Diff Edit → Stage Selected Lines (Your Text)", which ends with a status-bar message only, without a log line, when the right side's cursor is on no unstaged change.
+
+**Fix:** (1) log every "nothing to stage" outcome of `stageMine` and `stageAgreed` (`log.info`), so the next report shows which path ran; (2) release 0.2.5 with the hover buttons (blocked: the owner approves push and release). Blocks: nothing else.
+
 ## Bug: an inserted blank line merges separate line changes into one block
 
 Recorded 2026-11-17 13:11:39.202949218. Open; nothing in the code is changed yet. Blocks: taking one paragraph of the proposal without the next (the user takes a block and gets two paragraphs, or cannot take one alone).
